@@ -1,0 +1,27 @@
+.{
+    .name = .thorcon,
+    .version = "0.1.0-dev",
+    .minimum_zig_version = "0.14.0",
+    .fingerprint = 0xb94660b47e366a6e,
+    .dependencies = .{
+        .clap = .{
+            .url = "https://github.com/Hejsil/zig-clap/archive/refs/tags/0.10.0.tar.gz",
+            .hash = "clap-0.10.0-oBajB434AQBDh-Ei3YtoKIRxZacVPF1iSwp3IX_ZB8f0",
+        },
+        .ocispec = .{
+            .url = "https://github.com/navidys/oci-spec-zig/archive/refs/tags/v0.2.0.tar.gz",
+            .hash = "ocispec-0.2.0-dev-voj0cSmuAgDeu3LqjV7jVDBAgTrrO8kUMffypy-Mo2wr",
+        },
+        .datetime = .{
+            .url = "git+https://github.com/frmdstryr/zig-datetime#3bec9979ba6da0c20669705676b4e3b469a0f1b7",
+            .hash = "datetime-0.8.0-cJNXzPXXAQBatvf9tYfTS2FMKMKNGM7zJnxmetb6AWJy",
+        },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+        "LICENSE",
+        "README.md",
+    },
+}

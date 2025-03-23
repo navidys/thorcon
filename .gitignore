@@ -1,2 +1,8 @@
 .zig-cache/
+zig-cache/
 zig-out/
+test-out/
+.coverage/
+bin/
+tutorial/
+config.json
