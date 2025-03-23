@@ -1,0 +1,17 @@
+pub const Error = error{
+    InvalidContainerListOptions,
+    InvalidContainerCreateOptions,
+    InvalidContainerRunOptions,
+    InvalidContainerName,
+    InvalidBundleDir,
+    InvalidConfigfile,
+    SpecRootFsError,
+    SchedCloneError,
+    PivotRootError,
+    ChrootError,
+    ContainerMountError,
+    ContainerListError,
+    ContainerExist,
+    ContainerNotFound,
+    ContainerInvalidState,
+};
