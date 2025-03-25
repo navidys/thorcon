@@ -6,12 +6,15 @@ const VERSION: []const u8 = "0.1.0-dev";
 
 const main_parsers = .{
     .command = clap.parsers.enumeration(cmd.SubCommands),
+    .PATH = clap.parsers.string,
 };
 
 // The parameters for `main`. Parameters for the subcommands are specified further down.
 const main_params = clap.parseParamsComptime(
     \\-h, --help     Display this help and exit.
     \\-v, --version  Display version and exit.
+    \\-r, --root <PATH> Root directory
+    \\--systemd-cgroup use systemd cgroups
     \\-d, --debug    Enable debug
     \\<command>
     \\
@@ -56,11 +59,21 @@ pub fn main() !void {
         return stdout.print("version: {s}\n", .{VERSION});
     }
 
+    var systemd_cgroup = false;
+
+    // workaround for main args systemd-cgroup
+    const margs_content = try std.fmt.allocPrint(std.heap.page_allocator, "{any}", .{res.args});
+    const systemd_cgroup_enabled = std.mem.indexOf(u8, margs_content, ".systemd-cgroup = 1");
+    if (systemd_cgroup_enabled) |enabled| {
+        if (enabled >= 0)
+            systemd_cgroup = true;
+    }
+
     const command = res.positionals[0] orelse return error.MissingCommand;
     switch (command) {
         .help => return usage(),
         .spec => try cmd.spec.exec(gpa, &iter, res),
-        .create => try cmd.create.exec(gpa, &iter, res),
+        .create => try cmd.create.exec(gpa, &iter, res, systemd_cgroup),
     }
 }
 
@@ -80,6 +93,8 @@ fn usage() !void {
     try stdout.print("        state    - {s}\n", .{"output the state of a container"});
     try stdout.print("        pause    - {s}\n", .{"unpause the processes in the container"});
     try stdout.print("        resume   - {s}\n\n", .{"generate a configuration file"});
-    try stdout.print("  -h, --help       {s}\n", .{"display help and exit"});
-    try stdout.print("  -v, --version    {s}\n", .{"display version and exit"});
+    try stdout.print("      --root                {s}\n", .{"root directory"});
+    try stdout.print("      --systemd-cgroup      {s}\n", .{"use systemd cgroups"});
+    try stdout.print("  -h, --help                \n", .{});
+    try stdout.print("  -v, --version             \n", .{});
 }

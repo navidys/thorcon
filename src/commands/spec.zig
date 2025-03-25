@@ -53,13 +53,13 @@ pub fn exec(gpa: std.mem.Allocator, iter: *std.process.ArgIterator, main_args: a
     if (res.args.rootless != 0)
         rootless = true;
 
-    const specOpts = libcontainer.SpecOptions{
+    const secp_opts = libcontainer.SpecOptions{
         .rootless = rootless,
         .bundleDir = bundle_dir,
         .file = spec_file,
     };
 
-    try libcontainer.generateSpec(&specOpts);
+    try libcontainer.generateSpec(&secp_opts);
 }
 
 fn usage() !void {

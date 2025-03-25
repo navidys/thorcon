@@ -1,0 +1,46 @@
+@startuml container create
+
+Actor User
+
+User -> Command: create
+activate Command
+Command -> ContainerBuilder: initBuilder
+activate ContainerBuilder
+ContainerBuilder -> ContainerBuilder: validate
+ContainerBuilder -> Spec: Load
+activate Spec
+Spec --> ContainerBuilder: spec
+deactivate Spec
+ContainerBuilder -> ContainerBuilder: createContainerDir
+ContainerBuilder -> Container: init
+activate Container
+ContainerBuilder -> Container: setSystemd
+ContainerBuilder -> Container: setAnnotations
+deactivate Container
+ContainerBuilder -> ContainerBuilder: check notify file
+ContainerBuilder -> ContainerBuilder: setupConsoleSockets
+ContainerBuilder -> UserNamespaceConfig: init
+activate UserNamespaceConfig
+UserNamespaceConfig -> UserNamespace: init
+activate UserNamespace
+UserNamespace -> UserNamespace: validate spec
+UserNamespace --> UserNamespaceConfig: ?namespaces
+deactivate UserNamespace
+UserNamespaceConfig --> ContainerBuilder
+deactivate UserNamespaceConfig
+ContainerBuilder -> Config: configFromSpec(spec)
+activate Config
+Config --> ContainerBuilder:
+deactivate Config
+ContainerBuilder -> Config: save
+activate Config
+Config --> ContainerBuilder:
+deactivate Config
+ContainerBuilder -> ContainerBuilder: create
+ContainerBuilder -> container: refreshState
+ContainerBuilder --> Command: ContainerInfo
+deactivate ContainerBuilder
+Command -> User: display new container information
+deactivate Command
+
+@enduml

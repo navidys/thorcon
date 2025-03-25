@@ -58,6 +58,8 @@ fn getSpec(rootless: bool) !*runtime.Spec {
     const linux_namespace = try getSpecNamespaces(rootless);
     const linux_masked_path = try getSpecMaskedPath();
     const linux_readonly_path = try getSpecReadonlyPath();
+    const uid_mappings = try getUIDMappings(rootless);
+    const gid_mappings = try getGIDMappings(rootless);
 
     var spec = runtime.Spec{
         .process = runtime.Process{
@@ -77,6 +79,8 @@ fn getSpec(rootless: bool) !*runtime.Spec {
             .resources = runtime.LinuxResources{
                 .devices = try linux_resource_devices.toOwnedSlice(),
             },
+            .uidMappings = uid_mappings,
+            .gidMappings = gid_mappings,
             .namespaces = linux_namespace,
             .maskedPaths = linux_masked_path,
             .readonlyPaths = linux_readonly_path,
@@ -90,6 +94,38 @@ fn getSpec(rootless: bool) !*runtime.Spec {
     };
 
     return &spec;
+}
+
+fn getUIDMappings(rootless: bool) !?[]runtime.LinuxIdMapping {
+    if (!rootless) {
+        return null;
+    }
+
+    var uid_mappings = std.ArrayList(runtime.LinuxIdMapping).init(std.heap.page_allocator);
+
+    try uid_mappings.append(runtime.LinuxIdMapping{
+        .hostID = std.os.linux.getuid(),
+        .containerID = 0,
+        .size = 1,
+    });
+
+    return try uid_mappings.toOwnedSlice();
+}
+
+fn getGIDMappings(rootless: bool) !?[]runtime.LinuxIdMapping {
+    if (!rootless) {
+        return null;
+    }
+
+    var gid_mappings = std.ArrayList(runtime.LinuxIdMapping).init(std.heap.page_allocator);
+
+    try gid_mappings.append(runtime.LinuxIdMapping{
+        .hostID = std.os.linux.getgid(),
+        .containerID = 0,
+        .size = 1,
+    });
+
+    return try gid_mappings.toOwnedSlice();
 }
 
 fn getSpecProcessCap() !runtime.LinuxCapabilities {
