@@ -14,15 +14,13 @@ pub fn unshare() void {
     switch (linux.E.init(linux.unshare(unshare_flags))) {
         .SUCCESS => return,
         else => |err| {
-            std.log.debug("unexpectedErrno: {any}", .{err});
+            std.log.debug("unshare error: {any}", .{err});
             unreachable;
         },
     }
 }
 
 pub fn clone(f: anytype, args: anytype) !usize {
-    std.log.debug("clone process", .{});
-
     const page_size = std.heap.pageSize();
     const Args = @TypeOf(args);
 
