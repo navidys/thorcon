@@ -23,7 +23,6 @@ pub fn container_run(rootfs: []const u8, _: []const u8) !void {
 }
 
 fn run(rootfs: []const u8) void {
-    std.log.debug("child run rootfs {s}", .{rootfs});
     sched.unshare();
     filesystem.mount_rootfs(rootfs);
 
@@ -33,5 +32,4 @@ fn run(rootfs: []const u8) void {
     };
 
     std.time.sleep(10000000000);
-    std.log.debug("child end", .{});
 }
