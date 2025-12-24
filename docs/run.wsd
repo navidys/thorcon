@@ -3,37 +3,38 @@ actor User as User
 participant "commands\nrun" as RunCommand
 participant "libcontainer\nrun" as Run
 participant "libcontainer\ncreate" as Create
+participant "libcontainer\nruntime" as Runtime
 participant "libcontainer\nfilesystem" as Filesystem
-participant "libcontainer\nruntime.Spec" as RuntimeSpec
 participant "libcontainer\nstate.ContainerState" as ContainerState
 participant "libcontainer\nstart" as Start
+participant "libcontianer\nsched" as Sched
 participant "oci_runtime\nSpec" as OCISpec
-participant "\nSched" as Sched
 participant "\nPosix" as Posix
+participant "OS\nlinux" as Linux
 
 User -> RunCommand: exec
 activate RunCommand #FFBBBB
 
 RunCommand -> Run: runContainer(rootDir, opts)
-activate Run #DarkSalmon
+activate Run #Salmon
 
 Run -> Create: createContainer(rootDir, opts)
-activate Create #DarkSalmon
+activate Create #Salmon
 
 Create -> Filesystem: initRootPath(rootDir, name)
-activate Filesystem #DarkSalmon
+activate Filesystem #Salmon
 
 Filesystem --> Create: runtime (basePath)
 deactivate Filesystem
 
-Create -> RuntimeSpec: initFromFile(file)
-activate RuntimeSpec #DarkSalmon
+Create -> OCISpec: initFromFile(file)
+activate OCISpec #Salmon
 
-RuntimeSpec --> Create: Spec
-deactivate RuntimeSpec
+OCISpec --> Create: Spec
+deactivate OCISpec
 
 Create -> ContainerState: init(rootDir, bundleDir, rootfs, spec, noPivot)\nwriteStateFile()
-activate ContainerState #DarkSalmon
+activate ContainerState #Salmon
 
 ContainerState --> Create: cntstate
 deactivate ContainerState
@@ -42,16 +43,16 @@ Create --> Run:
 deactivate Create
 
 Run -> Start: startContainer(rootDir, name)
-activate Start #DarkSalmon
+activate Start #Salmon
 
 Start -> Filesystem: initRootPath(rootDir, name): initRootPath(rootDir, name)
-activate Filesystem #DarkSalmon
+activate Filesystem #Salmon
 
 Filesystem --> Start: runtime (basePath)
 deactivate Filesystem
 
 Start -> ContainerState: initFromFile(rootDir)
-activate ContainerState #DarkSalmon
+activate ContainerState #Salmon
 
 ContainerState --> Start: cntstate
 deactivate ContainerState
@@ -63,7 +64,25 @@ OCISpec --> Start: runtimeSpec
 deactivate OCISpec
 
 Start -> Sched: clone
-activate Sched #LightGray
+activate Sched #Salmon
+
+Sched -> Runtime: prepareAndExecute(rootfs, spec, noPivot)
+activate Sched #DarkSalmon
+activate Runtime #Salmon
+Runtime -> Runtime: containerSetHostname(hostname)
+Runtime -> Runtime: containerSetDomainname(domainname)
+Runtime -> Runtime: setChroot/PivotRootFS(rootfs)
+Runtime -> Runtime: containerSetCwd(process.cwd)
+Runtime -> Runtime: containerSetMountPoints()
+Runtime -> Runtime: containerSetMountPoints()
+Runtime -> Linux: execve
+activate Linux #LightGray
+Linux --> Runtime
+deactivate Linux
+Runtime --> Sched
+deactivate Runtime
+deactivate Sched
+
 
 Sched --> Start: childPID
 deactivate Sched

@@ -111,6 +111,7 @@ pub fn mountRootFs(rootfs: []const u8) void {
 
     const rootfs_dir = posix.toPosixPath(rootfs) catch |err| {
         std.log.debug("mount rootfs to posix path error: {any}", .{err});
+
         unreachable;
     };
 
@@ -119,6 +120,7 @@ pub fn mountRootFs(rootfs: []const u8) void {
         .SUCCESS => return,
         else => |err| {
             std.log.debug("mount rootfs error: {any}", .{err});
+
             unreachable;
         },
     }
