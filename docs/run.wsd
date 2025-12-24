@@ -1,0 +1,86 @@
+@startuml
+actor User as User
+participant "commands\nrun" as RunCommand
+participant "libcontainer\nrun" as Run
+participant "libcontainer\ncreate" as Create
+participant "libcontainer\nfilesystem" as Filesystem
+participant "libcontainer\nruntime.Spec" as RuntimeSpec
+participant "libcontainer\nstate.ContainerState" as ContainerState
+participant "libcontainer\nstart" as Start
+participant "oci_runtime\nSpec" as OCISpec
+participant "\nSched" as Sched
+participant "\nPosix" as Posix
+
+User -> RunCommand: exec
+activate RunCommand #FFBBBB
+
+RunCommand -> Run: runContainer(rootDir, opts)
+activate Run #DarkSalmon
+
+Run -> Create: createContainer(rootDir, opts)
+activate Create #DarkSalmon
+
+Create -> Filesystem: initRootPath(rootDir, name)
+activate Filesystem #DarkSalmon
+
+Filesystem --> Create: runtime (basePath)
+deactivate Filesystem
+
+Create -> RuntimeSpec: initFromFile(file)
+activate RuntimeSpec #DarkSalmon
+
+RuntimeSpec --> Create: Spec
+deactivate RuntimeSpec
+
+Create -> ContainerState: init(rootDir, bundleDir, rootfs, spec, noPivot)\nwriteStateFile()
+activate ContainerState #DarkSalmon
+
+ContainerState --> Create: cntstate
+deactivate ContainerState
+
+Create --> Run:
+deactivate Create
+
+Run -> Start: startContainer(rootDir, name)
+activate Start #DarkSalmon
+
+Start -> Filesystem: initRootPath(rootDir, name): initRootPath(rootDir, name)
+activate Filesystem #DarkSalmon
+
+Filesystem --> Start: runtime (basePath)
+deactivate Filesystem
+
+Start -> ContainerState: initFromFile(rootDir)
+activate ContainerState #DarkSalmon
+
+ContainerState --> Start: cntstate
+deactivate ContainerState
+
+Start -> OCISpec: initFromFile(specFile)
+activate OCISpec #LightGray
+
+OCISpec --> Start: runtimeSpec
+deactivate OCISpec
+
+Start -> Sched: clone
+activate Sched #LightGray
+
+Sched --> Start: childPID
+deactivate Sched
+
+Start -> Posix: init(waitPID(childPID))
+activate Posix #LightGray
+
+Posix --> Start: sucess/error
+deactivate Posix
+
+Start -> Run:
+deactivate Start
+
+Run --> RunCommand:
+deactivate Run
+
+RunCommand --> User:
+deactivate RunCommand
+
+@enduml
