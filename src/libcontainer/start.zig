@@ -34,10 +34,17 @@ pub fn startContainer(rootDir: ?[]const u8, name: []const u8) !void {
         return err;
     };
 
+    // TODO setup cgroup
+    // TODO run hooks
+    // TODO create NOTIFY SOCKET
+    // TODO adjust oom if needed
+    // TODO cleanup container (cgroup)
+
     const Args = std.meta.Tuple(&.{ []const u8, oci_runtime.Spec, bool });
     const args: Args = .{ containerState.rootfsDir, runtimeSpec, containerState.noPivot };
 
     const childPID = try sched.clone(runtime.prepareAndExecute, args);
+    // TODO write PID file
 
     switch (posix.E.init(posix.waitpid(@intCast(childPID), 0).status)) {
         .SUCCESS => std.log.debug("pid {} child cloned process has terminated", .{pid}),

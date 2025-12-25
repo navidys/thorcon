@@ -12,9 +12,12 @@ pub fn unshare() void {
     const pid = std.os.linux.getpid();
     std.log.debug("pid {} create isolated namespace", .{pid});
 
-    const unshare_flags = linux.CLONE.NEWNS | linux.CLONE.NEWNET | linux.CLONE.NEWUTS | linux.CLONE.NEWPID | linux.CLONE.NEWIPC;
+    // TODO read flags from spec
+    const unshare_flags = linux.CLONE.NEWNS | linux.CLONE.NEWCGROUP | linux.CLONE.NEWNET | linux.CLONE.NEWUTS | linux.CLONE.NEWPID | linux.CLONE.NEWIPC;
     switch (linux.E.init(linux.unshare(unshare_flags))) {
-        .SUCCESS => {},
+        .SUCCESS => {
+            std.time.sleep(2 * std.time.ns_per_s);
+        },
         else => |err| {
             std.log.debug("pid {} unshare error: {any}", .{ pid, err });
             unreachable;

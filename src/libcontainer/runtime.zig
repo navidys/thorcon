@@ -72,6 +72,8 @@ pub fn prepareAndExecute(rootfs: []const u8, spec: runtime.Spec, noPivot: bool) 
     }
 }
 
+fn writeUidGidMappings() !void {}
+
 fn containerSetCwd(path: []const u8) !void {
     const pid = std.os.linux.getpid();
 
@@ -117,7 +119,7 @@ fn containerSetMountPoints() !void {
     const pid = std.os.linux.getpid();
     const proc_posix = try posix.toPosixPath("/proc");
 
-    switch (linux.E.init(linux.mount("none", &proc_posix, "proc", 0, 0))) {
+    switch (linux.E.init(linux.mount("proc", &proc_posix, "proc", 0, 0))) {
         .SUCCESS => {},
         else => |err| {
             std.log.debug("pid {} container mount error: {any}", .{ pid, err });
