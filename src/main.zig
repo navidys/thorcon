@@ -1,11 +1,26 @@
 const clap = @import("clap");
 const std = @import("std");
-const cmd = @import("commands/lib.zig");
+const spec = @import("spec.zig");
+const run = @import("run.zig");
+const create = @import("create.zig");
+const list = @import("list.zig");
+const delete = @import("delete.zig");
+const start = @import("start.zig");
 
 const VERSION: []const u8 = "0.1.0-dev";
 
+const subCommands = enum {
+    help,
+    spec,
+    create,
+    list,
+    delete,
+    start,
+    run,
+};
+
 const main_parsers = .{
-    .command = clap.parsers.enumeration(cmd.SubCommands),
+    .command = clap.parsers.enumeration(subCommands),
     .PATH = clap.parsers.string,
 };
 
@@ -61,12 +76,12 @@ pub fn main() !void {
     const command = res.positionals[0] orelse return error.MissingCommand;
     switch (command) {
         .help => return usage(),
-        .spec => try cmd.spec.exec(gpa, &iter, res),
-        .run => try cmd.run.exec(gpa, &iter, res),
-        .create => try cmd.create.exec(gpa, &iter, res),
-        .delete => try cmd.delete.exec(gpa, &iter, res),
-        .start => try cmd.start.exec(gpa, &iter, res),
-        .list => try cmd.list.exec(gpa, &iter, res),
+        .spec => try spec.exec(gpa, &iter, res),
+        .run => try run.exec(gpa, &iter, res),
+        .create => try create.exec(gpa, &iter, res),
+        .delete => try delete.exec(gpa, &iter, res),
+        .start => try start.exec(gpa, &iter, res),
+        .list => try list.exec(gpa, &iter, res),
     }
 }
 
