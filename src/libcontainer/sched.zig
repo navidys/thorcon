@@ -6,7 +6,8 @@ const fs = std.fs;
 const assert = std.debug.assert;
 
 const DEFAULT_HOSTNAME: []const u8 = "thorcon";
-const DEFAULT_CLONE_STACKSIZE = 1024 * 1024;
+const DEFAULT_CLONE_STACKSIZE = 8 * 1024 * 1024;
+// const DEFAULT_PAGE_SIZE: usize = 4 * 1024;
 
 pub fn unshare() void {
     const pid = std.os.linux.getpid();
@@ -23,6 +24,7 @@ pub fn unshare() void {
     }
 }
 
+// TODO check clone implementation
 pub fn clone(f: anytype, args: anytype) !usize {
     const page_size = std.heap.pageSize();
     const Args = @TypeOf(args);
@@ -57,13 +59,14 @@ pub fn clone(f: anytype, args: anytype) !usize {
         break :blk bytes;
     };
 
+    // TODO check clone flags
     const clone_flags = linux.CLONE.NEWNS | linux.CLONE.NEWPID | linux.CLONE.NEWCGROUP | linux.CLONE.NEWUTS | linux.CLONE.NEWNET | linux.CLONE.NEWIPC;
 
     const mapped = posix.mmap(
         null,
         map_bytes,
-        posix.PROT.NONE,
-        .{ .TYPE = .PRIVATE, .ANONYMOUS = true },
+        posix.PROT.READ | posix.PROT.WRITE,
+        .{ .TYPE = .PRIVATE, .ANONYMOUS = true, .STACK = true },
         -1,
         0,
     ) catch |err| switch (err) {
