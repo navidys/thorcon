@@ -63,7 +63,7 @@ pub fn prepareAndExecute(rootfs: []const u8, spec: runtime.Spec, noPivot: bool) 
     }
 
     // mount filesystems
-    mount.setContainerMountPoints() catch |err| {
+    mount.setContainerMountPoints(pid, spec) catch |err| {
         std.log.err("pid {}: {any}", .{ pid, err });
         unreachable;
     };

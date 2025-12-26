@@ -63,6 +63,17 @@ pub fn createDirAllWithMode(path: []const u8, mode: std.fs.File.Mode) !void {
     try dir.chmod(mode);
 }
 
+pub fn createDirAll(path: []const u8) !void {
+    std.fs.cwd().makePath(path) catch |err| {
+        if (err != error.PathAlreadyExists) {
+            return err;
+        }
+    };
+
+    var dir = try std.fs.cwd().openDir(path, .{ .iterate = true });
+    defer dir.close();
+}
+
 pub fn deleteDirAll(path: []const u8, subPath: []const u8) !void {
     var dir = try std.fs.cwd().openDir(path, .{ .iterate = true });
     defer dir.close();
