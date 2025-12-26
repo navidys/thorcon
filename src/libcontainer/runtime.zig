@@ -73,8 +73,6 @@ pub fn prepareAndExecute(rootfs: []const u8, spec: runtime.Spec, noPivot: bool) 
     }
 }
 
-fn writeUidGidMappings() !void {}
-
 fn containerSetCwd(path: []const u8) !void {
     const pid = std.os.linux.getpid();
 
