@@ -119,16 +119,7 @@ fn containerSetDomainname(domainname: []const u8) !void {
 fn containerSetMountPoints() !void {
     const pid = std.os.linux.getpid();
 
-    const root_path = try posix.toPosixPath("/");
     const proc_path = try posix.toPosixPath("/proc");
-
-    switch (linux.E.init(linux.mount("none", &root_path, null, linux.MS.REC | linux.MS.PRIVATE, 0))) {
-        .SUCCESS => {},
-        else => |err| {
-            std.log.debug("pid {} container / mount error: {any}", .{ pid, err });
-            return errors.Error.ContainerMountError;
-        },
-    }
 
     switch (linux.E.init(linux.mount("proc", &proc_path, "proc", 0, 0))) {
         .SUCCESS => {},
