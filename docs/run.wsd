@@ -90,7 +90,7 @@ deactivate Sched
 Start -> Posix: init(waitPID(childPID))
 activate Posix #LightGray
 
-Posix --> Start: sucess/error
+Posix --> Start: success/error
 deactivate Posix
 
 Start -> Run:

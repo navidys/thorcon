@@ -17,12 +17,12 @@ const uinstd = @cImport({
 pub fn prepareAndExecute(rootfs: []const u8, spec: runtime.Spec, noPivot: bool) void {
     const pid = std.os.linux.getpid();
 
-    namespace.setContainerNamespaces(pid) catch |err| {
+    namespace.setContainerNamespaces(pid, spec) catch |err| {
         std.log.debug("pid {} container name space: {any}", .{ pid, err });
         unreachable;
     };
 
-    std.log.debug("pid {} unshare running", .{pid});
+    std.log.debug("pid {} required namespaces created", .{pid});
 
     // setup cgroup
 
