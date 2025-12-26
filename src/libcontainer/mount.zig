@@ -20,6 +20,7 @@ pub fn setContainerMountPoints(pid: i32, spec: ocispec.runtime.Spec) !void {
             var mountSource = try std.fmt.allocPrintZ(std.heap.page_allocator, "none", .{});
             var mountType = try std.fmt.allocPrintZ(std.heap.page_allocator, "", .{});
             var mountFlags: u32 = 0;
+            var mountData = try std.fmt.allocPrint(std.heap.page_allocator, "", .{});
 
             if (mountPoint.source) |src| {
                 mountSource = try std.fmt.allocPrintZ(std.heap.page_allocator, "{s}", .{src});
@@ -90,20 +91,48 @@ pub fn setContainerMountPoints(pid: i32, spec: ocispec.runtime.Spec) !void {
 
                         continue;
                     }
+
+                    if (std.mem.eql(u8, mopt, "strictatime")) {
+                        if (mountFlags == 0) {
+                            mountFlags = linux.MS.STRICTATIME;
+                        } else {
+                            mountFlags = mountFlags | linux.MS.STRICTATIME;
+                        }
+
+                        continue;
+                    }
+
+                    if (mountData.len == 0) {
+                        mountData = try std.fmt.allocPrint(std.heap.page_allocator, "{s}", .{mopt});
+                    } else {
+                        mountData = try std.fmt.allocPrint(std.heap.page_allocator, "{s},{s}", .{ mountData, mopt });
+                    }
                 }
             }
 
             // TODO create directotories
             // TODO check if type is bind then create parent directory
-
             try utils.createDirAll(mountPoint.destination);
 
-            switch (linux.E.init(linux.mount(mountSource, &mountPath, mountType, mountFlags, 0))) {
-                .SUCCESS => {},
-                else => |err| {
-                    std.log.debug("pid {} container mount error: {any}", .{ pid, err });
-                    return errors.Error.ContainerMountError;
-                },
+            // TODO mount data is not parsed correctly
+
+            if (mountData.len != 0) {
+                const mountD = try std.fmt.allocPrintZ(std.heap.page_allocator, "{s}", .{mountData});
+                switch (linux.E.init(linux.mount(mountSource, &mountPath, mountType, mountFlags, @intFromPtr(&mountD)))) {
+                    .SUCCESS => {},
+                    else => |err| {
+                        std.log.debug("pid {} container mount error: {any}", .{ pid, err });
+                        return errors.Error.ContainerMountError;
+                    },
+                }
+            } else {
+                switch (linux.E.init(linux.mount(mountSource, &mountPath, mountType, mountFlags, 0))) {
+                    .SUCCESS => {},
+                    else => |err| {
+                        std.log.debug("pid {} container mount error: {any}", .{ pid, err });
+                        return errors.Error.ContainerMountError;
+                    },
+                }
             }
         }
     }
