@@ -59,14 +59,14 @@ $ ./bin/thorcon start busybox01
 | create     | create a container                            | ✅    |
 | delete     | remove definition for a container             | ✅    |
 | exec       | exec a command in a running container         |       |
-| list       | list known containers                         | ✅
+| list       | list known containers                         | ✅    |
 | mounts     | add or remove mounts from a running container |       |
 | kill       | send a signal to the container init process   |       |
 | ps         | show the processes in the container           |       |
 | restore    | restore a container                           |       |
-| run        | run a container                               |       |
+| run        | run a container                               | 🔶    |
 | spec       | generate a configuration file                 |       |
-| start      | start a container                             |       |
+| start      | start a container                             | 🔶    |
 | state      | output the state of a container               |       |
 | pause      | pause all the processes in the container      |       |
 | resume     | unpause the processes in the container        |       |
@@ -78,7 +78,7 @@ $ ./bin/thorcon start busybox01
 | --------------------- | ----------------------------------------------- | ------|
 | docker                | running via docker                              |       |
 | podman                | running via podman                              |       |
-| pivot_root            | change the root directory                       |       |
+| pivot_root            | change the root directory                       | 🔶    |
 | mounts                | mount files and directories to container        |       |
 | namespaces            | isolation of various resources                  |       |
 | capabilities          | limiting root privileges                        |       |
@@ -87,8 +87,8 @@ $ ./bin/thorcon start busybox01
 | systemd cgroup driver | setting up a cgroup using systemd               |       |
 | seccomp               | filtering system calls                          |       |
 | hooks                 | add custom processing during container creation |       |
-| rootless              | running a container without root privileges     |       |
-| oci compliance        | compliance with OCI Runtime Spec                |       |
+| rootless              | running a container without root privileges     | 🔶    |
+| oci compliance        | compliance with OCI Runtime Spec                | 🔶    |
 
 ## License
 Licensed under the [Apache License](https://github.com/navidys/thorcon/blob/main/LICENSE)
