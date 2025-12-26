@@ -7,22 +7,6 @@ const assert = std.debug.assert;
 
 const DEFAULT_HOSTNAME: []const u8 = "thorcon";
 const DEFAULT_CLONE_STACKSIZE = 8 * 1024 * 1024;
-// const DEFAULT_PAGE_SIZE: usize = 4 * 1024;
-
-pub fn unshare() void {
-    const pid = std.os.linux.getpid();
-    std.log.debug("pid {} create isolated namespace", .{pid});
-
-    // TODO read flags from spec
-    const unshare_flags = linux.CLONE.NEWNS | linux.CLONE.NEWCGROUP | linux.CLONE.NEWNET | linux.CLONE.NEWUTS | linux.CLONE.NEWPID | linux.CLONE.NEWIPC;
-    switch (linux.E.init(linux.unshare(unshare_flags))) {
-        .SUCCESS => {},
-        else => |err| {
-            std.log.debug("pid {} unshare error: {any}", .{ pid, err });
-            unreachable;
-        },
-    }
-}
 
 // TODO check clone implementation
 pub fn clone(f: anytype, args: anytype) !usize {

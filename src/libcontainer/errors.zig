@@ -14,4 +14,5 @@ pub const Error = error{
     ContainerExist,
     ContainerNotFound,
     ContainerInvalidState,
+    ContainerNamespaceError,
 };

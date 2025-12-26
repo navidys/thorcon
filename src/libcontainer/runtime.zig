@@ -4,6 +4,8 @@ const errors = @import("errors.zig");
 const ocispec = @import("ocispec");
 const sched = @import("sched.zig");
 const filesystem = @import("filesystem.zig");
+const namespace = @import("namespace.zig");
+pub const mount = @import("mount.zig");
 const posix = std.posix;
 const linux = std.os.linux;
 const runtime = ocispec.runtime;
@@ -15,7 +17,10 @@ const uinstd = @cImport({
 pub fn prepareAndExecute(rootfs: []const u8, spec: runtime.Spec, noPivot: bool) void {
     const pid = std.os.linux.getpid();
 
-    sched.unshare();
+    namespace.setContainerNamespaces(pid) catch |err| {
+        std.log.debug("pid {} container name space: {any}", .{ pid, err });
+        unreachable;
+    };
 
     std.log.debug("pid {} unshare running", .{pid});
 
@@ -58,7 +63,7 @@ pub fn prepareAndExecute(rootfs: []const u8, spec: runtime.Spec, noPivot: bool) 
     }
 
     // mount filesystems
-    containerSetMountPoints() catch |err| {
+    mount.setContainerMountPoints() catch |err| {
         std.log.err("pid {}: {any}", .{ pid, err });
         unreachable;
     };
@@ -110,20 +115,6 @@ fn containerSetDomainname(domainname: []const u8) !void {
         else => |err| {
             std.log.debug("pid {} container set domainname error: {any}", .{ pid, err });
             unreachable;
-        },
-    }
-}
-
-fn containerSetMountPoints() !void {
-    const pid = std.os.linux.getpid();
-
-    const proc_path = try posix.toPosixPath("/proc");
-
-    switch (linux.E.init(linux.mount("proc", &proc_path, "proc", 0, 0))) {
-        .SUCCESS => {},
-        else => |err| {
-            std.log.debug("pid {} container proc mount error: {any}", .{ pid, err });
-            return errors.Error.ContainerMountError;
         },
     }
 }
