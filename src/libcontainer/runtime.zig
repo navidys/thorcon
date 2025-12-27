@@ -19,6 +19,7 @@ pub fn prepareAndExecute(rootfs: []const u8, spec: runtime.Spec, noPivot: bool) 
 
     namespace.setContainerNamespaces(pid, spec) catch |err| {
         std.log.debug("pid {} container name space: {any}", .{ pid, err });
+
         unreachable;
     };
 
@@ -30,6 +31,7 @@ pub fn prepareAndExecute(rootfs: []const u8, spec: runtime.Spec, noPivot: bool) 
     if (spec.hostname) |cnthostname| {
         containerSetHostname(cnthostname) catch |err| {
             std.log.err("pid {} unshare set hostname error: {any}", .{ pid, err });
+
             unreachable;
         };
     }
@@ -37,19 +39,22 @@ pub fn prepareAndExecute(rootfs: []const u8, spec: runtime.Spec, noPivot: bool) 
     if (spec.domainname) |cntdomainname| {
         containerSetDomainname(cntdomainname) catch |err| {
             std.log.err("pid {} unshare set domain name error: {any}", .{ pid, err });
+
             unreachable;
         };
     }
 
     // pivot root or chroot to rootfs
     if (noPivot) {
-        filesystem.setChrootRootFs(rootfs) catch |err| {
-            std.log.err("pid {} unshare run chroot error: {any}", .{ pid, err });
+        filesystem.setChrootRootFs(pid, rootfs) catch |err| {
+            std.log.err("pid {} chroot error: {any}", .{ pid, err });
+
             unreachable;
         };
     } else {
-        filesystem.setPivotRootFs(rootfs) catch |err| {
-            std.log.err("pid {} unshare run pivot error: {any}", .{ pid, err });
+        filesystem.setPivotRootFs(pid, rootfs) catch |err| {
+            std.log.err("pid {} pivot_root error: {any}", .{ pid, err });
+
             unreachable;
         };
     }
@@ -57,14 +62,16 @@ pub fn prepareAndExecute(rootfs: []const u8, spec: runtime.Spec, noPivot: bool) 
     // set working directory
     if (spec.process) |cprocess| {
         containerSetCwd(cprocess.cwd) catch |err| {
-            std.log.err("pid {} unshare set working directory error: {any}", .{ pid, err });
+            std.log.err("pid {} set working directory error: {any}", .{ pid, err });
+
             unreachable;
         };
     }
 
     // mount filesystems
-    mount.setContainerMountPoints(pid, spec) catch |err| {
+    mount.mountContainersMounts(pid, spec) catch |err| {
         std.log.err("pid {}: {any}", .{ pid, err });
+
         unreachable;
     };
 
@@ -72,7 +79,8 @@ pub fn prepareAndExecute(rootfs: []const u8, spec: runtime.Spec, noPivot: bool) 
     switch (linux.E.init(linux.execve("/bin/sh", &.{"sh"}, &.{""}))) {
         .SUCCESS => {},
         else => |err| {
-            std.log.debug("pid {} chroot execve error: {any}", .{ pid, err });
+            std.log.debug("pid {} execve error: {any}", .{ pid, err });
+
             unreachable;
         },
     }

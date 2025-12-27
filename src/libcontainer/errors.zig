@@ -10,6 +10,8 @@ pub const Error = error{
     PivotRootError,
     ChrootError,
     ContainerMountError,
+    ContainerRootfsMountError,
+    ContainerRootfsUmountError,
     ContainerListError,
     ContainerExist,
     ContainerNotFound,

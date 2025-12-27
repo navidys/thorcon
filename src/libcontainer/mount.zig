@@ -5,7 +5,9 @@ const errors = @import("errors.zig");
 const posix = std.posix;
 const linux = std.os.linux;
 
-pub fn setContainerMountPoints(pid: i32, spec: ocispec.runtime.Spec) !void {
+pub const DEFAULT_OLD_ROOT_PATH: []const u8 = "/.oldroot";
+
+pub fn mountContainersMounts(pid: i32, spec: ocispec.runtime.Spec) !void {
     // TODO mount cgroup
     std.log.debug("pid {} setting container mount points", .{pid});
 
@@ -135,5 +137,37 @@ pub fn setContainerMountPoints(pid: i32, spec: ocispec.runtime.Spec) !void {
                 }
             }
         }
+    }
+}
+
+pub fn mountContainerRootFs(pid: i32, rootfs: []const u8) !void {
+    std.log.debug("pid {} mount bind rootfs: {s}", .{ pid, rootfs });
+
+    const rootfs_dir = try posix.toPosixPath(rootfs);
+    const rootfs_source = try std.fmt.allocPrintZ(std.heap.page_allocator, "{s}", .{rootfs});
+
+    const mount_result = linux.mount(rootfs_source, &rootfs_dir, null, linux.MS.BIND | linux.MS.PRIVATE | linux.MS.REC, 0);
+    switch (linux.E.init(mount_result)) {
+        .SUCCESS => return,
+        else => |err| {
+            std.log.debug("pid {} mount rootfs error: {any}", .{ pid, err });
+
+            return errors.Error.ContainerRootfsMountError;
+        },
+    }
+}
+
+pub fn umountContainerRootfs(pid: i32, path: []const u8) !void {
+    std.log.debug("pid {} umount rootfs {s}", .{ pid, path });
+
+    const old_rootfs_dir = try posix.toPosixPath(path);
+
+    switch (linux.E.init(linux.umount2(&old_rootfs_dir, linux.MNT.DETACH))) {
+        .SUCCESS => {},
+        else => |err| {
+            std.log.debug("pid {} umount old rootfs error: {any}", .{ pid, err });
+
+            return errors.Error.ContainerRootfsUmountError;
+        },
     }
 }
