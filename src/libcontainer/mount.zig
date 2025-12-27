@@ -11,6 +11,17 @@ pub fn mountContainersMounts(pid: i32, spec: ocispec.runtime.Spec) !void {
     // TODO mount cgroup
     std.log.debug("pid {} setting container mount points", .{pid});
 
+    //const rootPath = try posix.toPosixPath("/");
+    //const rootSource = try std.fmt.allocPrintZ(std.heap.page_allocator, "none", .{});
+
+    //switch (linux.E.init(linux.mount(rootSource, &rootPath, null, linux.MS.REC | linux.MS.PRIVATE, 0))) {
+    //    .SUCCESS => {},
+    //    else => |err| {
+    //        std.log.debug("pid {} container mount / error: {any}", .{ pid, err });
+    //        return errors.Error.ContainerMountError;
+    //    },
+    //}
+
     if (spec.mounts) |mountPoints| {
         for (mountPoints) |mountPoint| {
             std.log.debug(
