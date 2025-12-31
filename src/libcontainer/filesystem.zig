@@ -2,6 +2,7 @@ const std = @import("std");
 const utils = @import("utils.zig");
 const errors = @import("errors.zig");
 const mount = @import("mount.zig");
+const ocispec = @import("ocispec");
 const posix = std.posix;
 const linux = std.os.linux;
 

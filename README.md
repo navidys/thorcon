@@ -1,7 +1,7 @@
 # thorcon
 Thor Container Runtime (**thorcon**) is a simple container runtime written in Zig
 
-`NOTE:` project is in early phase of development and feel free to contribute.  
+`NOTE:` project is in early phase of development and feel free to contribute.
 check available [commands](#commands) and [features](#features) (feel free to contribute)
 
 ## Development Environment
@@ -63,7 +63,7 @@ $ ./bin/thorcon start busybox01
 | exec       | exec a command in a running container         |       |
 | list       | list known containers                         | ✅    |
 | mounts     | add or remove mounts from a running container |       |
-| kill       | send a signal to the container init process   |       |
+| kill       | send a signal to the container init process   | ✅    |
 | ps         | show the processes in the container           |       |
 | restore    | restore a container                           |       |
 | run        | run a container                               | 🔶    |

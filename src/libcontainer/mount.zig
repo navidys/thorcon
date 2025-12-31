@@ -19,7 +19,7 @@ const mountOptions = struct {
     data: []u8,
 };
 
-pub fn mountContainersMounts(pid: i32, spec: ocispec.runtime.Spec) !void {
+pub fn mountContainerMounts(pid: i32, spec: ocispec.runtime.Spec) !void {
     // TODO mount cgroup
     std.log.debug("pid {} setting container mount points", .{pid});
 
@@ -40,6 +40,7 @@ pub fn mountContainersMounts(pid: i32, spec: ocispec.runtime.Spec) !void {
     var cntInitMounts = std.ArrayList(mountInfo).init(gpa);
     var cntPostInitMounts = std.ArrayList(mountInfo).init(gpa);
 
+    //TODO cleanup first and second
     defer cntPostInitMounts.deinit();
     defer cntInitMounts.deinit();
 
@@ -97,7 +98,7 @@ pub fn mountContainersMounts(pid: i32, spec: ocispec.runtime.Spec) !void {
 
     // post init mounts
     for (cntPostInitMounts.items) |minfo| {
-        std.log.debug("{} mounting {s}", .{ pid, minfo.destZ });
+        std.log.debug("pid {} mounting {s}", .{ pid, minfo.destZ });
 
         var mdataPtr: usize = 0;
         if (minfo.options.data.len != 0) {
@@ -149,6 +150,67 @@ pub fn umountContainerRootfs(pid: i32, path: []const u8) !void {
 
             return errors.Error.ContainerRootfsUmountError;
         },
+    }
+}
+
+// for files bind mounts devtmpfs over top of path
+// for directories bind tmpfs over top of path
+pub fn setContainerMaskedPath(pid: i32, spec: ocispec.runtime.Spec) !void {
+    if (spec.linux) |slinux| {
+        if (slinux.maskedPaths) |maskedPaths| {
+            const cwd = std.fs.cwd();
+
+            for (maskedPaths) |mpath| {
+                std.log.debug("pid {} setting masked path {s}", .{ pid, mpath });
+                const dest = try posix.toPosixPath(mpath);
+
+                var sfile = try cwd.openFile(mpath, .{});
+                defer sfile.close();
+
+                const sStat = try sfile.stat();
+                if (sStat.kind == .directory) {
+                    switch (linux.E.init(linux.mount("tmpfs", &dest, "tmpfs", linux.MS.BIND, 0))) {
+                        .SUCCESS => {},
+                        else => |err| {
+                            std.log.err("pid {} container masked path {s}: {any}", .{ pid, mpath, err });
+                        },
+                    }
+                } else {
+                    switch (linux.E.init(linux.mount("devtmpfs", &dest, "devtmpfs", linux.MS.BIND, 0))) {
+                        .SUCCESS => {},
+                        else => |err| {
+                            std.log.err("pid {} container masked path {s}: {any}", .{ pid, mpath, err });
+                        },
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn setContainerReadOnlyPath(pid: i32, spec: ocispec.runtime.Spec) !void {
+    if (spec.linux) |slinux| {
+        if (slinux.readonlyPaths) |readonlyPaths| {
+            for (readonlyPaths) |rpath| {
+                std.log.debug("pid {} setting readonly path {s}", .{ pid, rpath });
+                const dest = try posix.toPosixPath(rpath);
+                const src = try std.fmt.allocPrintZ(std.heap.page_allocator, "{s}", .{rpath});
+
+                switch (linux.E.init(linux.mount(src, &dest, null, linux.MS.BIND | linux.MS.REC, 0))) {
+                    .SUCCESS => {
+                        switch (linux.E.init(linux.mount(src, &dest, null, linux.MS.BIND | linux.MS.NOSUID | linux.MS.NODEV | linux.MS.REMOUNT | linux.MS.RDONLY, 0))) {
+                            .SUCCESS => {},
+                            else => |err| {
+                                std.log.err("pid {} container readonly path {s}: {any}", .{ pid, rpath, err });
+                            },
+                        }
+                    },
+                    else => |err| {
+                        std.log.err("pid {} container readonly path {s}: {any}", .{ pid, rpath, err });
+                    },
+                }
+            }
+        }
     }
 }
 

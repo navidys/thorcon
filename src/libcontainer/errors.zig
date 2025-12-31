@@ -1,7 +1,4 @@
 pub const Error = error{
-    InvalidContainerListOptions,
-    InvalidContainerCreateOptions,
-    InvalidContainerRunOptions,
     InvalidContainerName,
     InvalidBundleDir,
     InvalidConfigfile,
@@ -15,8 +12,8 @@ pub const Error = error{
     ContainerRootfsUmountError,
     ContainerPivotRootError,
     ContainerListError,
-    ContainerExist,
     ContainerNotFound,
     ContainerInvalidState,
+    ContainerInvalidStatus,
     ContainerNamespaceError,
 };

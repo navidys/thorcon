@@ -8,6 +8,7 @@ const LOCK_FILE = "state.lock";
 const PID_FILE = "pid";
 
 pub const ContainerState = struct {
+    runDir: []const u8,
     stateFile: []const u8,
     lockFile: []const u8,
     bundleDir: []const u8,
@@ -17,6 +18,8 @@ pub const ContainerState = struct {
     noPivot: bool,
     created: []const u8,
     status: ContainerStatus,
+    commReader: i32,
+    commWriter: i32,
 
     pub fn init(rootDir: []const u8, bundleDir: []const u8, rootfs: []const u8, spec: []const u8, noPivot: bool) !ContainerState {
         const gpa = std.heap.page_allocator;
@@ -25,6 +28,7 @@ pub const ContainerState = struct {
         const lockfile = try getLockFileName(rootDir);
 
         std.log.debug("state file: {s}", .{stateFile});
+        std.log.debug("pid file: {s}", .{pidfile});
         std.log.debug("lock file: {s}", .{lockfile});
 
         const currenTime = datetime.datetime.Datetime.now();
@@ -34,25 +38,31 @@ pub const ContainerState = struct {
 
         return ContainerState{
             .noPivot = noPivot,
+            .runDir = rootDir,
             .bundleDir = bundleDir,
             .specFile = spec,
             .rootfsDir = rootfs,
             .pidFile = pidfile,
-            .status = ContainerStatus.Init,
+            .status = ContainerStatus.Undefined,
             .stateFile = stateFile,
             .lockFile = lockfile,
             .created = created,
+            .commReader = -1,
+            .commWriter = -1,
         };
     }
 
-    pub fn initFromFile(rootDir: []const u8) !ContainerState {
-        const gpa = std.heap.page_allocator;
-        const lockfilePath = try getLockFileName(rootDir);
-        const stateFilePath = try getStateFileName(rootDir);
-        const lockfile = try fs.cwd().openFile(lockfilePath, fs.File.OpenFlags{ .mode = .read_only });
+    pub fn getContainerState(rootDir: []const u8) !ContainerState {
+        const lfile = try getLockFileName(rootDir);
+        const lockfile = try fs.cwd().openFile(lfile, fs.File.OpenFlags{ .mode = .read_only });
         defer lockfile.close();
 
         try fs.File.lock(lockfile, .exclusive);
+
+        defer fs.File.unlock(lockfile);
+
+        const gpa = std.heap.page_allocator;
+        const stateFilePath = try getStateFileName(rootDir);
 
         const content = try utils.readFileContent(stateFilePath, gpa);
         defer gpa.free(content);
@@ -64,17 +74,10 @@ pub const ContainerState = struct {
             .{ .allocate = .alloc_always, .ignore_unknown_fields = true },
         );
 
-        fs.File.unlock(lockfile);
-
         return stateParsed.value;
     }
 
     pub fn writeStateFile(self: @This()) !void {
-        const lockfile = try fs.cwd().openFile(self.lockFile, fs.File.OpenFlags{ .mode = .read_only });
-        defer lockfile.close();
-
-        try fs.File.lock(lockfile, .exclusive);
-
         const content = try utils.toJsonString(self, true);
         const content_newline = try std.mem.concat(
             std.heap.page_allocator,
@@ -83,8 +86,48 @@ pub const ContainerState = struct {
         );
 
         try utils.writeFileContent(self.stateFile, content_newline);
+    }
+
+    pub fn lock(self: @This()) !void {
+        const lockfile = try fs.cwd().openFile(self.lockFile, fs.File.OpenFlags{ .mode = .read_only });
+        defer lockfile.close();
+
+        try fs.File.lock(lockfile, .exclusive);
+    }
+
+    pub fn unlock(self: @This()) !void {
+        const lockfile = try fs.cwd().openFile(self.lockFile, fs.File.OpenFlags{ .mode = .read_only });
+        defer lockfile.close();
 
         fs.File.unlock(lockfile);
+    }
+
+    pub fn writePID(self: @This(), pid: usize) !void {
+        const cwd = std.fs.cwd();
+        const createFlag = std.fs.File.CreateFlags{ .read = false };
+        const file = try cwd.createFile(self.pidFile, createFlag);
+
+        defer file.close();
+
+        const content = try std.fmt.allocPrint(std.heap.page_allocator, "{d}", .{pid});
+
+        _ = try file.write(content);
+    }
+
+    pub fn readPID(self: @This()) !usize {
+        const cwd = std.fs.cwd();
+        const openFlag = std.fs.File.OpenFlags{ .mode = .read_only };
+        const file = try cwd.openFile(self.pidFile, openFlag);
+
+        defer file.close();
+
+        const buffer = try file.readToEndAlloc(std.heap.page_allocator, 1024);
+        defer std.heap.page_allocator.free(buffer);
+
+        const trimmed = std.mem.trim(u8, buffer, "\n\r ");
+        const pidVal = try std.fmt.parseInt(usize, trimmed, 10);
+
+        return pidVal;
     }
 
     fn getLockFileName(rootDir: []const u8) ![]const u8 {
@@ -100,8 +143,9 @@ pub const ContainerState = struct {
     }
 };
 
+// TODO proper container lifecycle
 pub const ContainerStatus = enum {
-    Init,
+    Undefined,
     Creating,
     Created,
     Running,
@@ -109,13 +153,51 @@ pub const ContainerStatus = enum {
     Paused,
 
     pub fn toString(self: @This()) []const u8 {
-        switch (self) {
-            .Init => return "init",
+        return switch (self) {
             .Creating => return "creating",
             .Created => return "created",
             .Running => return "running",
             .Stopped => return "stopped",
             .Paused => return "paused",
-        }
+            else => "undefined",
+        };
+    }
+
+    pub fn canStart(self: @This()) bool {
+        return (self == .Created);
+    }
+
+    pub fn canKill(self: @This()) bool {
+        return switch (self) {
+            .Creating => return false,
+            .Created => return true,
+            .Running => return true,
+            .Stopped => return false,
+            .Paused => return true,
+            else => false,
+        };
+    }
+
+    pub fn canCreate(self: @This()) bool {
+        return switch (self) {
+            .Creating => return false,
+            .Created => return false,
+            .Running => return false,
+            .Stopped => return true,
+            .Paused => return true,
+            else => false,
+        };
+    }
+
+    pub fn canDelete(self: @This()) bool {
+        return (self == .Stopped);
+    }
+
+    pub fn canPause(self: @This()) bool {
+        return (self == .Running);
+    }
+
+    pub fn canResume(self: @This()) bool {
+        return (self == .Paused);
     }
 };

@@ -1,11 +1,10 @@
 const std = @import("std");
 const errors = @import("errors.zig");
-const channel = @import("channel.zig");
-const state = @import("state.zig");
+const list = @import("list.zig");
 const filesystem = @import("filesystem.zig");
-const channelAction = channel.PChannelAction;
+const state = @import("state.zig");
 
-pub fn startContainer(rootDir: ?[]const u8, name: []const u8) !void {
+pub fn killContainer(rootDir: ?[]const u8, name: []const u8) !void {
     if (name.len == 0) {
         return errors.Error.InvalidContainerName;
     }
@@ -29,17 +28,18 @@ pub fn startContainer(rootDir: ?[]const u8, name: []const u8) !void {
         std.log.err("container state unlock: {any}", .{err});
     };
 
-    if (!cntstate.status.canStart()) {
+    if (!cntstate.status.canKill()) {
         return errors.Error.ContainerInvalidStatus;
     }
 
     const cntPID = try cntstate.readPID();
+    const posixPID: std.posix.pid_t = @intCast(cntPID);
 
-    var comm = try channel.PChannel.initFromFDs(cntPID, cntstate.commReader, cntstate.commWriter);
+    std.log.debug("container PID: {d}", .{cntPID});
 
-    try comm.sendWithFD(channelAction.Exec);
+    try std.posix.kill(posixPID, std.posix.SIG.KILL);
 
-    cntstate.status = state.ContainerStatus.Running;
+    cntstate.status = state.ContainerStatus.Stopped;
 
     try cntstate.writeStateFile();
 }

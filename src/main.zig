@@ -6,6 +6,8 @@ const create = @import("create.zig");
 const list = @import("list.zig");
 const delete = @import("delete.zig");
 const start = @import("start.zig");
+const kill = @import("kill.zig");
+const errors = @import("errors.zig");
 
 const VERSION: []const u8 = "0.1.0-dev";
 
@@ -17,6 +19,7 @@ const subCommands = enum {
     delete,
     start,
     run,
+    kill,
 };
 
 const main_parsers = .{
@@ -82,6 +85,7 @@ pub fn main() !void {
         .delete => try delete.exec(gpa, &iter, res),
         .start => try start.exec(gpa, &iter, res),
         .list => try list.exec(gpa, &iter, res),
+        .kill => try kill.exec(gpa, &iter, res),
     }
 }
 
@@ -89,12 +93,13 @@ fn usage() !void {
     const stdout = std.io.getStdOut().writer();
     try stdout.print("Usage: thorcon [OPTION...] COMMAND [OPTION...]\n\n", .{});
     try stdout.print("COMMANDS:\n", .{});
-    try stdout.print("        list     - {s}\n", .{"list known containers"});
     try stdout.print("        create   - {s}\n", .{"create a container"});
     try stdout.print("        delete   - {s}\n", .{"remove definition for a container"});
+    try stdout.print("        list     - {s}\n", .{"list known containers"});
+    try stdout.print("        kill     - {s}\n", .{"send a signal to the container init process"});
     try stdout.print("        run      - {s}\n", .{"run a container"});
-    try stdout.print("        start    - {s}\n", .{"start a container"});
     try stdout.print("        spec     - {s}\n", .{"generate a configuration file"});
+    try stdout.print("        start    - {s}\n", .{"start a container"});
     try stdout.print("      --root       {s}\n", .{"root directory"});
     try stdout.print("  -h, --help                \n", .{});
     try stdout.print("  -v, --version             \n", .{});

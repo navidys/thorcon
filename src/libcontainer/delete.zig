@@ -11,26 +11,24 @@ pub fn deleteContainer(rootDir: ?[]const u8, name: []const u8) !void {
     }
 
     const rootdir = try filesystem.initRootPath(rootDir, null);
-    std.log.debug("root directory: {s}", .{rootdir});
-
-    if (!try cntlist.ContainerExist(rootDir, name)) {
-        return errors.Error.ContainerNotFound;
-    }
-
     const cntRootDir = try std.fmt.allocPrint(std.heap.page_allocator, "{s}/{s}", .{ rootdir, name });
 
-    const state = cntstate.ContainerState.initFromFile(cntRootDir) catch {
-        utils.deleteDirAll(rootdir, name) catch return;
+    std.log.debug("container name {s}", .{name});
+    std.log.debug("container root dir {s}", .{cntRootDir});
 
-        return;
+    var cnts = cntstate.ContainerState.getContainerState(cntRootDir) catch |err| {
+        if (err == std.fs.File.OpenError.FileNotFound) {
+            return errors.Error.ContainerNotFound;
+        }
+
+        return err;
     };
 
-    if (state.status == cntstate.ContainerStatus.Running) {
-        return errors.Error.ContainerInvalidState;
-    }
+    try cnts.lock();
+    defer cnts.unlock() catch {};
 
-    if (state.status == cntstate.ContainerStatus.Paused) {
-        return errors.Error.ContainerInvalidState;
+    if (!cnts.status.canDelete()) {
+        return errors.Error.ContainerInvalidStatus;
     }
 
     try utils.deleteDirAll(rootdir, name);

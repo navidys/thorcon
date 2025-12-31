@@ -28,8 +28,7 @@ pub fn prepareAndExecute(rootfs: []const u8, spec: runtime.Spec, noPivot: bool, 
     //};
     // std.log.debug("pid {} required namespaces created", .{pid});
 
-    std.log.debug("pid {} action action {any}", .{ pid, channelAction.Wait });
-    pcomm.send(channelAction.Wait) catch {
+    pcomm.send(channelAction.PreInitOK) catch {
         unreachable;
     };
 
@@ -37,7 +36,7 @@ pub fn prepareAndExecute(rootfs: []const u8, spec: runtime.Spec, noPivot: bool, 
     while (true) {
         switch (ccomm.receive() catch unreachable) {
             channelAction.Init => {
-                std.log.debug("pid {} action {any} recevied", .{ pid, channelAction.Init });
+                std.log.debug("pid {} action {any} received", .{ pid, channelAction.Init });
 
                 break;
             },
@@ -102,11 +101,41 @@ pub fn prepareAndExecute(rootfs: []const u8, spec: runtime.Spec, noPivot: bool, 
     }
 
     // mount filesystems
-    mount.mountContainersMounts(pid, spec) catch |err| {
+    mount.mountContainerMounts(pid, spec) catch |err| {
         std.log.err("pid {}: {any}", .{ pid, err });
 
         unreachable;
     };
+
+    // set masked path
+    mount.setContainerMaskedPath(pid, spec) catch |err| {
+        std.log.err("pid {}: {any}", .{ pid, err });
+
+        // unreachable;
+    };
+
+    // set readonly path
+    mount.setContainerReadOnlyPath(pid, spec) catch |err| {
+        std.log.err("pid {}: {any}", .{ pid, err });
+
+        // unreachable;
+    };
+
+    pcomm.send(channelAction.InitOK) catch {
+        unreachable;
+    };
+
+    std.log.debug("pid {} waiting for action {any}", .{ pid, channelAction.Exec });
+    while (true) {
+        switch (ccomm.receive() catch unreachable) {
+            channelAction.Exec => {
+                std.log.debug("pid {} action {any} received", .{ pid, channelAction.Exec });
+
+                break;
+            },
+            else => {},
+        }
+    }
 
     // execute CMD and set ENV paths
     switch (linux.E.init(linux.execve("/bin/sh", &.{"sh"}, &.{""}))) {
