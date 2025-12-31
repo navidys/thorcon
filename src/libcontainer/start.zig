@@ -3,11 +3,13 @@ const utils = @import("utils.zig");
 const errors = @import("errors.zig");
 const ocispec = @import("ocispec");
 const process = @import("process.zig");
+const channel = @import("channel.zig");
 const runtime = @import("runtime.zig");
 const list = @import("list.zig");
 const state = @import("state.zig");
 const filesystem = @import("filesystem.zig");
 const namespace = @import("namespace.zig");
+const channelAction = channel.PChannelAction;
 const posix = std.posix;
 const linux = std.os.linux;
 const oci_runtime = ocispec.runtime;
@@ -41,8 +43,17 @@ pub fn startContainer(rootDir: ?[]const u8, name: []const u8) !void {
     // TODO adjust oom if needed
     // TODO cleanup container (cgroup)
 
-    const Args = std.meta.Tuple(&.{ []const u8, oci_runtime.Spec, bool });
-    const args: Args = .{ containerState.rootfsDir, runtimeSpec, containerState.noPivot };
+    var pcomm = try channel.PChannel.init("parent");
+    var ccomm = try channel.PChannel.init("child");
+
+    const Args = std.meta.Tuple(&.{ []const u8, oci_runtime.Spec, bool, *channel.PChannel, *channel.PChannel });
+    const args: Args = .{
+        containerState.rootfsDir,
+        runtimeSpec,
+        containerState.noPivot,
+        &pcomm,
+        &ccomm,
+    };
 
     var flags: u32 = 0;
     if (runtimeSpec.linux) |rlinux| {
@@ -56,16 +67,32 @@ pub fn startContainer(rootDir: ?[]const u8, name: []const u8) !void {
     // TODO write PID file
     // write user map
 
+    std.log.debug("pid {} waiting for action {any}", .{ pid, channelAction.Wait });
+    while (true) {
+        switch (try pcomm.receive()) {
+            channelAction.Wait => {
+                std.log.debug("pid {} action {any} recevied", .{ pid, channelAction.Wait });
+
+                break;
+            },
+            else => {},
+        }
+    }
+
     try writeMappings(pid, childPID, runtimeSpec);
 
-    switch (posix.E.init(posix.waitpid(@intCast(childPID), 0).status)) {
-        .SUCCESS => std.log.debug("pid {} child cloned process has terminated", .{pid}),
-        else => |err| {
-            std.log.err("pid {} unexpectedErrno: {any}", .{ pid, err });
+    std.log.debug("pid {} sending action {any}", .{ pid, channelAction.Init });
 
-            return errors.Error.ProcessCloneError;
-        },
-    }
+    try ccomm.send(channelAction.Init);
+
+    // switch (posix.E.init(posix.waitpid(@intCast(childPID), 0).status)) {
+    //    .SUCCESS => std.log.debug("pid {} child cloned process has terminated", .{pid}),
+    //    else => |err| {
+    //        std.log.err("pid {} unexpectedErrno: {any}", .{ pid, err });
+    //
+    //        return errors.Error.ProcessCloneError;
+    //    },
+    //}
 }
 
 pub fn writeMappings(pid: i32, tpid: usize, spec: oci_runtime.Spec) !void {

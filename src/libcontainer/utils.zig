@@ -52,10 +52,7 @@ pub fn canonicalPath(path: []const u8) ![]const u8 {
 }
 
 pub fn createDirAllWithMode(path: []const u8, mode: std.fs.File.Mode) !void {
-    std.log.debug("makeDir with mode {s} {any}", .{ path, mode });
     std.fs.cwd().makeDir(path) catch |err| {
-        std.log.err("makeDir with mode {s} {any}", .{ path, err });
-
         if (err != error.PathAlreadyExists) {
             return err;
         }

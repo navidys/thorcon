@@ -5,7 +5,9 @@ const ocispec = @import("ocispec");
 const process = @import("process.zig");
 const filesystem = @import("filesystem.zig");
 const namespace = @import("namespace.zig");
-pub const mount = @import("mount.zig");
+const mount = @import("mount.zig");
+const channel = @import("channel.zig");
+const channelAction = channel.PChannelAction;
 const posix = std.posix;
 const linux = std.os.linux;
 const runtime = ocispec.runtime;
@@ -16,7 +18,7 @@ const uinstd = @cImport({
     @cInclude("unistd.h");
 });
 
-pub fn prepareAndExecute(rootfs: []const u8, spec: runtime.Spec, noPivot: bool) void {
+pub fn prepareAndExecute(rootfs: []const u8, spec: runtime.Spec, noPivot: bool, pcomm: *channel.PChannel, ccomm: *channel.PChannel) void {
     const pid = std.os.linux.getpid();
 
     //namespace.setContainerNamespaces(pid, spec) catch |err| {
@@ -25,6 +27,23 @@ pub fn prepareAndExecute(rootfs: []const u8, spec: runtime.Spec, noPivot: bool) 
     //    unreachable;
     //};
     // std.log.debug("pid {} required namespaces created", .{pid});
+
+    std.log.debug("pid {} action action {any}", .{ pid, channelAction.Wait });
+    pcomm.send(channelAction.Wait) catch {
+        unreachable;
+    };
+
+    std.log.debug("pid {} waiting for action {any}", .{ pid, channelAction.Init });
+    while (true) {
+        switch (ccomm.receive() catch unreachable) {
+            channelAction.Init => {
+                std.log.debug("pid {} action {any} recevied", .{ pid, channelAction.Init });
+
+                break;
+            },
+            else => {},
+        }
+    }
 
     mount.mountContainerRootFs(pid, rootfs) catch |err| {
         std.log.err("pid {} mount roofs: {any}", .{ pid, err });

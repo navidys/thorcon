@@ -73,6 +73,8 @@ pub fn mountContainersMounts(pid: i32, spec: ocispec.runtime.Spec) !void {
 
     // init mounts
     for (cntInitMounts.items) |minfo| {
+        std.log.debug("{} mounting {s}", .{ pid, minfo.destZ });
+
         var mdataPtr: usize = 0;
         if (minfo.options.data.len != 0) {
             const mdata = try std.fmt.allocPrintZ(gpa, "{s}", .{minfo.options.data});
@@ -95,6 +97,8 @@ pub fn mountContainersMounts(pid: i32, spec: ocispec.runtime.Spec) !void {
 
     // post init mounts
     for (cntPostInitMounts.items) |minfo| {
+        std.log.debug("{} mounting {s}", .{ pid, minfo.destZ });
+
         var mdataPtr: usize = 0;
         if (minfo.options.data.len != 0) {
             const mdata = try std.fmt.allocPrintZ(gpa, "{s}", .{minfo.options.data});
