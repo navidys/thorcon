@@ -1,6 +1,7 @@
 const std = @import("std");
 const clap = @import("clap");
 const libcontainer = @import("libcontainer");
+const errors = @import("errors.zig");
 
 pub fn exec(_: std.mem.Allocator, iter: *std.process.ArgIterator, main_args: anytype) !void {
     // _ = main_args;
@@ -35,7 +36,7 @@ pub fn exec(_: std.mem.Allocator, iter: *std.process.ArgIterator, main_args: any
             'n' => if (arg.value) |value| {
                 containerName = value;
             },
-            else => return libcontainer.errors.Error.InvalidContainerListOptions,
+            else => return errors.Error.InvalidContainerStartOptions,
         }
     }
 

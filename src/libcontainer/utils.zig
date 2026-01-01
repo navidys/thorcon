@@ -1,4 +1,5 @@
 const std = @import("std");
+const errors = @import("errors.zig");
 const filesystem = @import("filesystem.zig");
 const fs = std.fs;
 
@@ -52,10 +53,7 @@ pub fn canonicalPath(path: []const u8) ![]const u8 {
 }
 
 pub fn createDirAllWithMode(path: []const u8, mode: std.fs.File.Mode) !void {
-    std.log.debug("makeDir with mode {s} {any}", .{ path, mode });
     std.fs.cwd().makeDir(path) catch |err| {
-        std.log.err("makeDir with mode {s} {any}", .{ path, err });
-
         if (err != error.PathAlreadyExists) {
             return err;
         }
@@ -107,4 +105,19 @@ pub fn toJsonString(value: anytype, pretty: bool) ![]const u8 {
     };
 
     return jsonValue;
+}
+
+pub fn getRootFSPath(bundledir: []const u8, rootfs: []const u8) ![]const u8 {
+    var rootfsPath = rootfs;
+    if (rootfsPath.len == 0)
+        return errors.Error.SpecRootFsError;
+
+    if (rootfsPath[rootfsPath.len - 1] != '/') {
+        rootfsPath = try std.mem.concat(std.heap.page_allocator, u8, &.{ rootfsPath, "/" });
+        rootfsPath = try std.mem.concat(std.heap.page_allocator, u8, &.{ "/", rootfsPath });
+        rootfsPath = try std.mem.concat(std.heap.page_allocator, u8, &.{ bundledir, rootfsPath });
+        rootfsPath = try canonicalPath(rootfsPath);
+    }
+
+    return rootfsPath;
 }

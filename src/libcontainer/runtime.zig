@@ -5,7 +5,9 @@ const ocispec = @import("ocispec");
 const process = @import("process.zig");
 const filesystem = @import("filesystem.zig");
 const namespace = @import("namespace.zig");
-pub const mount = @import("mount.zig");
+const mount = @import("mount.zig");
+const channel = @import("channel.zig");
+const channelAction = channel.PChannelAction;
 const posix = std.posix;
 const linux = std.os.linux;
 const runtime = ocispec.runtime;
@@ -16,7 +18,7 @@ const uinstd = @cImport({
     @cInclude("unistd.h");
 });
 
-pub fn prepareAndExecute(rootfs: []const u8, spec: runtime.Spec, noPivot: bool) void {
+pub fn prepareAndExecute(rootfs: []const u8, spec: runtime.Spec, noPivot: bool, pcomm: *channel.PChannel, ccomm: *channel.PChannel) void {
     const pid = std.os.linux.getpid();
 
     //namespace.setContainerNamespaces(pid, spec) catch |err| {
@@ -25,6 +27,22 @@ pub fn prepareAndExecute(rootfs: []const u8, spec: runtime.Spec, noPivot: bool) 
     //    unreachable;
     //};
     // std.log.debug("pid {} required namespaces created", .{pid});
+
+    pcomm.send(channelAction.PreInitOK) catch {
+        unreachable;
+    };
+
+    std.log.debug("pid {} waiting for action {any}", .{ pid, channelAction.Init });
+    while (true) {
+        switch (ccomm.receive() catch unreachable) {
+            channelAction.Init => {
+                std.log.debug("pid {} action {any} received", .{ pid, channelAction.Init });
+
+                break;
+            },
+            else => {},
+        }
+    }
 
     mount.mountContainerRootFs(pid, rootfs) catch |err| {
         std.log.err("pid {} mount roofs: {any}", .{ pid, err });
@@ -83,11 +101,41 @@ pub fn prepareAndExecute(rootfs: []const u8, spec: runtime.Spec, noPivot: bool) 
     }
 
     // mount filesystems
-    mount.mountContainersMounts(pid, spec) catch |err| {
+    mount.mountContainerMounts(pid, spec) catch |err| {
         std.log.err("pid {}: {any}", .{ pid, err });
 
         unreachable;
     };
+
+    // set masked path
+    mount.setContainerMaskedPath(pid, spec) catch |err| {
+        std.log.err("pid {}: {any}", .{ pid, err });
+
+        // unreachable;
+    };
+
+    // set readonly path
+    mount.setContainerReadOnlyPath(pid, spec) catch |err| {
+        std.log.err("pid {}: {any}", .{ pid, err });
+
+        // unreachable;
+    };
+
+    pcomm.send(channelAction.InitOK) catch {
+        unreachable;
+    };
+
+    std.log.debug("pid {} waiting for action {any}", .{ pid, channelAction.Exec });
+    while (true) {
+        switch (ccomm.receive() catch unreachable) {
+            channelAction.Exec => {
+                std.log.debug("pid {} action {any} received", .{ pid, channelAction.Exec });
+
+                break;
+            },
+            else => {},
+        }
+    }
 
     // execute CMD and set ENV paths
     switch (linux.E.init(linux.execve("/bin/sh", &.{"sh"}, &.{""}))) {

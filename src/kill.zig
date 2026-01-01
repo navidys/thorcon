@@ -36,15 +36,15 @@ pub fn exec(_: std.mem.Allocator, iter: *std.process.ArgIterator, main_args: any
             'n' => if (arg.value) |value| {
                 containerName = value;
             },
-            else => return errors.Error.InvalidContainerListOptions,
+            else => return errors.Error.InvalidContainerKillOptions,
         }
     }
 
-    try libcontainer.delete.deleteContainer(main_args.args.root, containerName);
+    try libcontainer.kill.killContainer(main_args.args.root, containerName);
 }
 
 fn usage() !void {
     const stdout = std.io.getStdOut().writer();
-    try stdout.print("Usage: delete [OPTION...] CONTAINER\n\n", .{});
+    try stdout.print("Usage: start [OPTION...] CONTAINER\n\n", .{});
     try stdout.print("  -h, --help                   {s}\n\n", .{"display help and exit"});
 }

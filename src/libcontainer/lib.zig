@@ -11,3 +11,5 @@ pub const run = @import("run.zig");
 pub const delete = @import("delete.zig");
 pub const start = @import("start.zig");
 pub const mount = @import("mount.zig");
+pub const kill = @import("kill.zig");
+pub const channel = @import("channel.zig");

@@ -1,5 +1,6 @@
 const cntstate = @import("state.zig");
 const filesystem = @import("filesystem.zig");
+const errors = @import("errors.zig");
 
 const std = @import("std");
 
@@ -11,21 +12,8 @@ pub const ContainerReport = struct {
     created: []const u8,
 };
 
-pub fn ContainerExist(rootDir: ?[]const u8, name: []const u8) !bool {
-    const rootdir = try filesystem.initRootPath(rootDir, null);
-    const cntRootDir = try std.fmt.allocPrint(std.heap.page_allocator, "{s}/{s}", .{ rootdir, name });
-
-    const cntRootDirStat = std.fs.cwd().statFile(cntRootDir) catch return false;
-    if (cntRootDirStat.kind == .directory) {
-        _ = try cntstate.ContainerState.initFromFile(cntRootDir);
-
-        return true;
-    }
-
-    return false;
-}
-
 pub fn ListContainers(rootDir: ?[]const u8) ![]ContainerReport {
+    const gpa = std.heap.page_allocator;
     const rootdir = try filesystem.initRootPath(rootDir, null);
 
     std.log.debug("root directory: {s}", .{rootdir});
@@ -34,7 +22,7 @@ pub fn ListContainers(rootDir: ?[]const u8) ![]ContainerReport {
 
     defer root.close();
 
-    var containers = std.ArrayList(ContainerReport).init(std.heap.page_allocator);
+    var containers = std.ArrayList(ContainerReport).init(gpa);
     defer containers.deinit();
 
     var rootIter = root.iterate();
@@ -42,18 +30,26 @@ pub fn ListContainers(rootDir: ?[]const u8) ![]ContainerReport {
         switch (dirContent.kind) {
             .directory => {
                 // load container state file
-                const cntRootDir = try std.fmt.allocPrint(std.heap.page_allocator, "{s}/{s}", .{ rootdir, dirContent.name });
-                const containerState = try cntstate.ContainerState.initFromFile(cntRootDir);
-                const container = ContainerReport{
-                    .name = try std.fmt.allocPrint(std.heap.page_allocator, "{s}", .{dirContent.name}),
-                    .bundle = containerState.bundleDir,
-                    .created = containerState.created,
-                    .status = containerState.status,
-                    .pid = "",
-                };
+                const cntRootDir = try std.fmt.allocPrint(gpa, "{s}/{s}", .{ rootdir, dirContent.name });
+                const containerState = cntstate.ContainerState.getContainerState(cntRootDir) catch continue;
+                if (containerState.status != cntstate.ContainerStatus.Undefined) {
+                    var pid: []const u8 = "";
+                    const pidVal = containerState.readPID() catch 0;
+                    if (pidVal != 0) {
+                        pid = try std.fmt.allocPrint(gpa, "{d}", .{pidVal});
+                    }
 
-                // append to the list
-                try containers.append(container);
+                    const container = ContainerReport{
+                        .name = try std.fmt.allocPrint(gpa, "{s}", .{dirContent.name}),
+                        .bundle = containerState.bundleDir,
+                        .created = containerState.created,
+                        .status = containerState.status,
+                        .pid = pid,
+                    };
+
+                    // append to the list
+                    try containers.append(container);
+                }
             },
             else => std.log.debug("root runtime directory includes invalid content: {s}", .{dirContent.name}),
         }
