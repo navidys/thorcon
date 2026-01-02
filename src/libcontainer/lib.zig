@@ -14,3 +14,4 @@ pub const mount = @import("mount.zig");
 pub const kill = @import("kill.zig");
 pub const channel = @import("channel.zig");
 pub const cleanup = @import("cleanup.zig");
+const clone = @import("clone.zig");

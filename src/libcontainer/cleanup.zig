@@ -23,7 +23,6 @@ pub fn refreshAllContainersState(rootDir: []const u8) !void {
                             if (err == error.ProcessNotFound) {
                                 try containerState.setStatus(cntstatus.Stopped);
                                 try containerState.writeStateFile();
-                                // TODO cleanup mount points
                             }
                         };
                     }

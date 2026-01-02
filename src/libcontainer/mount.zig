@@ -20,7 +20,6 @@ const mountOptions = struct {
 };
 
 pub fn mountContainerMounts(pid: i32, spec: ocispec.runtime.Spec) !void {
-    // TODO mount cgroup
     std.log.debug("pid {} setting container mount points", .{pid});
 
     const gpa = std.heap.page_allocator;
@@ -40,14 +39,11 @@ pub fn mountContainerMounts(pid: i32, spec: ocispec.runtime.Spec) !void {
     var cntInitMounts = std.ArrayList(mountInfo).init(gpa);
     var cntPostInitMounts = std.ArrayList(mountInfo).init(gpa);
 
-    //TODO cleanup first and second
     defer cntPostInitMounts.deinit();
     defer cntInitMounts.deinit();
 
     if (spec.mounts) |mountPoints| {
         for (mountPoints) |mountPoint| {
-            // TODO create directotories
-            // TODO check if type is bind then create parent directory
             const minfo = try prepareMountPoint(pid, mountPoint);
 
             if (std.mem.eql(u8, mountPoint.destination, "/proc")) {
@@ -246,8 +242,6 @@ fn prepareMountPoint(pid: i32, mount: ocispec.runtime.Mount) !mountInfo {
 }
 
 fn getMountFlagsAndData(options: ?[][]const u8) !mountOptions {
-    // TODO mount data is not parsed correctly
-
     var result = mountOptions{
         .flags = 0,
         .data = try std.fmt.allocPrint(std.heap.page_allocator, "", .{}),

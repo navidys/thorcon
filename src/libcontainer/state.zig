@@ -140,6 +140,16 @@ pub const ContainerState = struct {
         self.status = status;
     }
 
+    pub fn setCommFDs(self: *@This(), reader: i32, writer: i32) !void {
+        try self.lock();
+        defer self.unlock() catch |err| {
+            std.log.err("container state unlock: {any}", .{err});
+        };
+
+        self.commReader = reader;
+        self.commWriter = writer;
+    }
+
     fn getLockFileName(rootDir: []const u8) ![]const u8 {
         return std.fmt.allocPrint(std.heap.page_allocator, "{s}/{s}", .{ rootDir, LOCK_FILE });
     }
@@ -167,7 +177,6 @@ pub const ContainerState = struct {
     }
 };
 
-// TODO proper container lifecycle
 pub const ContainerStatus = enum {
     Undefined,
     Creating,

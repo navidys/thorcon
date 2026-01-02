@@ -34,6 +34,8 @@ pub fn createContainer(rootDir: ?[]const u8, opts: *const CreateOptions) !void {
     const rootdir = try filesystem.initRootPath(rootDir, null);
     const cntRootDir = try filesystem.initRootPath(rootdir, opts.name);
 
+    try cleanup.refreshAllContainersState(rootdir);
+
     const cntStateResult = cntstate.ContainerState.getContainerState(cntRootDir);
     var canCreate = false;
 
@@ -55,8 +57,15 @@ pub fn createContainer(rootDir: ?[]const u8, opts: *const CreateOptions) !void {
         return;
     }
 
-    try cleanup.refreshAllContainersState(rootdir);
-    try runtime.createContainer(opts.name, cntRootDir, bundledir, cntspec, opts.noPivot);
+    try create(opts.name, cntRootDir, bundledir, cntspec, opts.noPivot);
 }
 
-fn create() !void {}
+fn create(name: []const u8, rootdir: []const u8, bundle: []const u8, spec: []const u8, noPivot: bool) !void {
+    const fpid = try std.posix.fork();
+
+    if (fpid == 0) {
+        try runtime.createContainer(name, rootdir, bundle, spec, noPivot);
+    } else {
+        _ = std.posix.waitpid(fpid, 0);
+    }
+}
