@@ -1,215 +1,242 @@
 const std = @import("std");
-const utils = @import("utils.zig");
 const errors = @import("errors.zig");
-const ocispec = @import("ocispec");
-const process = @import("process.zig");
+const utils = @import("utils.zig");
+const cntruntime = @import("runtime.zig");
 const filesystem = @import("filesystem.zig");
+const cntstate = @import("state.zig");
 const namespace = @import("namespace.zig");
-const mount = @import("mount.zig");
+const process = @import("process.zig");
+const ocispec = @import("ocispec");
 const channel = @import("channel.zig");
+const cleanup = @import("cleanup.zig");
+const runtime = ocispec.runtime;
 const channelAction = channel.PChannelAction;
 const posix = std.posix;
 const linux = std.os.linux;
-const runtime = ocispec.runtime;
+const clone_flag = linux.CLONE;
+const fs = std.fs;
+const assert = std.debug.assert;
 
-const DEFAULT_HOSTNAME: []const u8 = "thorcon";
+const DEFAULT_CLONE_STACKSIZE = 8 * 1024 * 1024;
 
-const uinstd = @cImport({
-    @cInclude("unistd.h");
-});
+// TODO check clone implementation
+pub fn clone(flags: u32, f: anytype, args: anytype) !usize {
+    const page_size = std.heap.pageSize();
+    const Args = @TypeOf(args);
 
-pub fn prepareAndExecute(rootfs: []const u8, spec: runtime.Spec, noPivot: bool, pcomm: *channel.PChannel, ccomm: *channel.PChannel) void {
+    const Instance = struct {
+        fn_args: Args,
+
+        fn entryFn(raw_arg: usize) callconv(.c) u8 {
+            const self = @as(*@This(), @ptrFromInt(raw_arg));
+
+            return callFn(f, self.fn_args);
+        }
+    };
+
+    var guard_offset: usize = undefined;
+    var stack_offset: usize = undefined;
+    var instance_offset: usize = undefined;
+
+    const map_bytes = blk: {
+        var bytes: usize = page_size;
+        guard_offset = bytes;
+
+        bytes += @max(page_size, DEFAULT_CLONE_STACKSIZE);
+        bytes = std.mem.alignForward(usize, bytes, page_size);
+        stack_offset = bytes;
+
+        bytes = std.mem.alignForward(usize, bytes, @alignOf(Instance));
+        instance_offset = bytes;
+        bytes += @sizeOf(Instance);
+
+        bytes = std.mem.alignForward(usize, bytes, page_size);
+        break :blk bytes;
+    };
+
+    const mapped = posix.mmap(
+        null,
+        map_bytes,
+        posix.PROT.READ | posix.PROT.WRITE,
+        .{ .TYPE = .PRIVATE, .ANONYMOUS = true, .STACK = true },
+        -1,
+        0,
+    ) catch |err| switch (err) {
+        error.MemoryMappingNotSupported => unreachable,
+        error.AccessDenied => unreachable,
+        error.PermissionDenied => unreachable,
+        error.ProcessFdQuotaExceeded => unreachable,
+        error.SystemFdQuotaExceeded => unreachable,
+        error.MappingAlreadyExists => unreachable,
+        else => |e| return e,
+    };
+    assert(mapped.len >= map_bytes);
+
+    errdefer posix.munmap(mapped);
+
+    // map everything but the guard page as read/write
+    posix.mprotect(
+        @alignCast(mapped[guard_offset..]),
+        posix.PROT.READ | posix.PROT.WRITE,
+    ) catch |err| switch (err) {
+        error.AccessDenied => unreachable,
+        else => |e| return e,
+    };
+
+    const instance: *Instance = @ptrCast(@alignCast(&mapped[instance_offset]));
+    instance.* = .{
+        .fn_args = args,
+    };
+
+    const pid = linux.clone(
+        Instance.entryFn,
+        @intFromPtr(&mapped[stack_offset]),
+        flags | linux.SIG.CHLD,
+        @intFromPtr(instance),
+        null,
+        0,
+        null,
+    );
+
+    const ppid = std.os.linux.getpid();
+
+    switch (linux.E.init(pid)) {
+        .SUCCESS => std.log.debug("pid {} child clone pid {d}", .{ ppid, pid }),
+        else => |err| {
+            std.log.debug("pid {} unexpectedErrno: {any}", .{ ppid, err });
+            unreachable;
+        },
+    }
+
+    return pid;
+}
+
+pub fn createContainer(name: []const u8, rootdir: []const u8, bundle: []const u8, spec: []const u8, noPivot: bool) !void {
+    const runspec = try runtime.Spec.initFromFile(spec);
+    const rootfs = try utils.getRootFSPath(bundle, runspec.root.path);
+
+    std.log.debug("container name {s}", .{name});
+    std.log.debug("root directory: {s}", .{rootdir});
+    std.log.debug("bundle directory: {s}", .{bundle});
+    std.log.debug("runtime config: {s}", .{spec});
+    std.log.debug("rootfs: {s}", .{rootfs});
+
+    // init and write state file
+    var containerState = try cntstate.ContainerState.init(
+        rootdir,
+        bundle,
+        rootfs,
+        spec,
+        noPivot,
+    );
+
+    if (!containerState.status.canCreate()) {
+        std.log.err("cannot create container: {any}", .{errors.Error.ContainerInvalidStatus});
+    }
+
+    try containerState.setStatus(cntstate.ContainerStatus.Creating);
+    try containerState.writeStateFile();
+
+    // init container
+    const initInfo = try initContainer(&containerState, runspec);
+
+    containerState.commReader = initInfo[1];
+    containerState.commWriter = initInfo[2];
+
+    try containerState.setStatus(cntstate.ContainerStatus.Created);
+    try containerState.writeStateFile();
+
+    // write PID file
+    try containerState.writePID(initInfo[0]);
+}
+
+fn initContainer(state: *cntstate.ContainerState, spec: runtime.Spec) !struct { usize, i32, i32 } {
     const pid = std.os.linux.getpid();
+    std.log.debug("pid {} init container", .{pid});
 
-    //namespace.setContainerNamespaces(pid, spec) catch |err| {
-    //    std.log.debug("pid {} container name space: {any}", .{ pid, err });
-    //
-    //    unreachable;
-    //};
-    // std.log.debug("pid {} required namespaces created", .{pid});
+    // TODO setup cgroup
+    // TODO run hooks
+    // TODO create NOTIFY SOCKET
+    // TODO adjust oom if needed
+    // TODO cleanup container (cgroup)
 
-    pcomm.send(channelAction.PreInitOK) catch {
-        unreachable;
+    var pcomm = try channel.PChannel.init();
+    var ccomm = try channel.PChannel.init();
+
+    const Args = std.meta.Tuple(&.{ []const u8, runtime.Spec, bool, *channel.PChannel, *channel.PChannel });
+    const args: Args = .{
+        state.rootfsDir,
+        spec,
+        state.noPivot,
+        &pcomm,
+        &ccomm,
     };
 
-    std.log.debug("pid {} waiting for action {any}", .{ pid, channelAction.Init });
-    while (true) {
-        switch (ccomm.receive() catch unreachable) {
-            channelAction.Init => {
-                std.log.debug("pid {} action {any} received", .{ pid, channelAction.Init });
+    var flags: u32 = 0;
+    if (spec.linux) |rlinux| {
+        if (rlinux.namespaces) |namespaces| {
+            flags = @intCast(namespace.getUnshareFlags(pid, namespaces));
+        }
+    }
 
+    std.log.debug("pid {} process cloning", .{pid});
+    const childPID = try cntruntime.clone(flags, process.prepareAndExecute, args);
+
+    // write user map
+    std.log.debug("pid {} waiting for action {any}", .{ pid, channelAction.PreInitOK });
+    while (true) {
+        switch (try pcomm.receive()) {
+            channelAction.PreInitOK => {
                 break;
             },
             else => {},
         }
     }
 
-    mount.mountContainerRootFs(pid, rootfs) catch |err| {
-        std.log.err("pid {} mount roofs: {any}", .{ pid, err });
+    try writeMappings(pid, childPID, spec);
 
-        unreachable;
-    };
+    std.log.debug("pid {} sending action {any}", .{ pid, channelAction.Init });
 
-    // setup hostname and domain name
-    var hostname = DEFAULT_HOSTNAME;
-    if (spec.hostname) |cnthostname| {
-        hostname = cnthostname;
-    }
+    try ccomm.send(channelAction.Init);
 
-    containerSetHostname(pid, hostname) catch |err| {
-        std.log.err("pid {} set hostname error: {any}", .{ pid, err });
-
-        unreachable;
-    };
-
-    if (spec.domainname) |cntdomainname| {
-        containerSetDomainname(pid, cntdomainname) catch |err| {
-            std.log.err("pid {} set domain name error: {any}", .{ pid, err });
-
-            unreachable;
-        };
-    }
-
-    // set working directory, uid and gid
-    if (spec.process) |cprocess| {
-        containerSetCwd(pid, cprocess.cwd) catch |err| {
-            std.log.err("pid {} set working directory error: {any}", .{ pid, err });
-
-            unreachable;
-        };
-
-        containerSetUidAndGid(pid, cprocess.user.uid, cprocess.user.gid) catch |err| {
-            std.log.err("pid {} set uid and gid error: {any}", .{ pid, err });
-
-            unreachable;
-        };
-    }
-
-    // pivot root or chroot to rootfs
-    if (noPivot) {
-        filesystem.setChrootRootFs(pid, rootfs) catch |err| {
-            std.log.err("pid {} chroot error: {any}", .{ pid, err });
-
-            unreachable;
-        };
-    } else {
-        filesystem.setPivotRootFs(pid, rootfs) catch |err| {
-            std.log.err("pid {} pivot_root error: {any}", .{ pid, err });
-
-            unreachable;
-        };
-    }
-
-    // mount filesystems
-    mount.mountContainerMounts(pid, spec) catch |err| {
-        std.log.err("pid {}: {any}", .{ pid, err });
-
-        unreachable;
-    };
-
-    // set masked path
-    mount.setContainerMaskedPath(pid, spec) catch |err| {
-        std.log.err("pid {}: {any}", .{ pid, err });
-
-        // unreachable;
-    };
-
-    // set readonly path
-    mount.setContainerReadOnlyPath(pid, spec) catch |err| {
-        std.log.err("pid {}: {any}", .{ pid, err });
-
-        // unreachable;
-    };
-
-    pcomm.send(channelAction.InitOK) catch {
-        unreachable;
-    };
-
-    std.log.debug("pid {} waiting for action {any}", .{ pid, channelAction.Exec });
+    std.log.debug("pid {} waiting for action {any}", .{ pid, channelAction.InitOK });
     while (true) {
-        switch (ccomm.receive() catch unreachable) {
-            channelAction.Exec => {
-                std.log.debug("pid {} action {any} received", .{ pid, channelAction.Exec });
-
+        switch (try pcomm.receive()) {
+            channelAction.InitOK => {
                 break;
             },
             else => {},
         }
     }
 
-    // execute CMD and set ENV paths
-    switch (linux.E.init(linux.execve("/bin/sh", &.{"sh"}, &.{""}))) {
-        .SUCCESS => {},
-        else => |err| {
-            std.log.debug("pid {} execve error: {any}", .{ pid, err });
+    // switch (posix.E.init(posix.waitpid(@intCast(childPID), 0).status)) {
+    //    .SUCCESS => std.log.debug("pid {} child cloned process has terminated", .{pid}),
+    //    else => |err| {
+    //        std.log.err("pid {} unexpectedErrno: {any}", .{ pid, err });
+    //        return errors.Error.ProcessCloneError;
+    //    },
+    //}
 
-            unreachable;
-        },
+    return .{ childPID, ccomm.reader, ccomm.writer };
+}
+
+fn writeMappings(pid: i32, tpid: usize, spec: runtime.Spec) !void {
+    if (utils.isRootLess()) {
+        if (spec.linux) |rlinux| {
+            if (rlinux.uidMappings) |uidmappings| {
+                try namespace.writeUidMappings(pid, tpid, uidmappings);
+            }
+
+            // TODO gid mapping is not working ???
+            // if (rlinux.gidMappings) |gidmappings| {
+            //    try namespace.writeGidMappings(pid, tpid, gidmappings);
+            // }
+        }
     }
 }
 
-fn containerSetCwd(pid: i32, path: []const u8) !void {
-    if (path.len != 0) {
-        posix.chdir(path) catch |err| {
-            std.log.err("pid {} container failed to changed directory to {s}: {any}", .{ pid, path, err });
-            unreachable;
-        };
-    }
-}
+fn callFn(comptime f: anytype, args: anytype) u8 {
+    @call(.auto, f, args);
 
-fn containerSetHostname(pid: i32, hostname: []const u8) !void {
-    // TODO - at the moment we need glibc uinstd sethostname function
-    // in future if its part of zig then remove from here and build script
-    const result = uinstd.sethostname(hostname.ptr, hostname.len);
-    switch (linux.E.init(@intCast(result))) {
-        .SUCCESS => {},
-        else => |err| {
-            std.log.debug("pid {} container set hostname error: {any}", .{ pid, err });
-            unreachable;
-        },
-    }
-}
-
-fn containerSetDomainname(pid: i32, domainname: []const u8) !void {
-    // TODO - at the moment we need glibc uinstd setdomainname function
-    // in future if its part of zig then remove from here and build script
-    const result = uinstd.setdomainname(domainname.ptr, domainname.len);
-    switch (linux.E.init(@intCast(result))) {
-        .SUCCESS => {},
-        else => |err| {
-            std.log.debug("pid {} container set domainname error: {any}", .{ pid, err });
-
-            unreachable;
-        },
-    }
-}
-
-fn containerSetUidAndGid(pid: i32, uid: u32, gid: u32) !void {
-    const uresult = uinstd.setuid(uid);
-    if (uresult < 0) {
-        return errors.Error.ContainerProcessUIDError;
-    }
-
-    switch (linux.E.init(@intCast(uresult))) {
-        .SUCCESS => {},
-        else => |err| {
-            std.log.debug("pid {} container set uid error: {any}", .{ pid, err });
-
-            unreachable;
-        },
-    }
-
-    const gresult = uinstd.setuid(gid);
-    if (gresult < 0) {
-        return errors.Error.ContainerProcessGIDError;
-    }
-
-    switch (linux.E.init(@intCast(gresult))) {
-        .SUCCESS => {},
-        else => |err| {
-            std.log.debug("pid {} container set gid error: {any}", .{ pid, err });
-
-            unreachable;
-        },
-    }
+    return 0;
 }

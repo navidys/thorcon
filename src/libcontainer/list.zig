@@ -1,7 +1,7 @@
 const cntstate = @import("state.zig");
 const filesystem = @import("filesystem.zig");
 const errors = @import("errors.zig");
-
+const cleanup = @import("cleanup.zig");
 const std = @import("std");
 
 pub const ContainerReport = struct {
@@ -17,6 +17,8 @@ pub fn ListContainers(rootDir: ?[]const u8) ![]ContainerReport {
     const rootdir = try filesystem.initRootPath(rootDir, null);
 
     std.log.debug("root directory: {s}", .{rootdir});
+
+    try cleanup.refreshAllContainersState(rootdir);
 
     var root = try std.fs.cwd().openDir(rootdir, .{ .iterate = true });
 

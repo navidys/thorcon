@@ -4,6 +4,7 @@ const cntlist = @import("list.zig");
 const errors = @import("errors.zig");
 const utils = @import("utils.zig");
 const filesystem = @import("filesystem.zig");
+const cleanup = @import("cleanup.zig");
 
 pub fn deleteContainer(rootDir: ?[]const u8, name: []const u8) !void {
     if (name.len == 0) {
@@ -12,6 +13,8 @@ pub fn deleteContainer(rootDir: ?[]const u8, name: []const u8) !void {
 
     const rootdir = try filesystem.initRootPath(rootDir, null);
     const cntRootDir = try std.fmt.allocPrint(std.heap.page_allocator, "{s}/{s}", .{ rootdir, name });
+
+    try cleanup.refreshAllContainersState(rootdir);
 
     std.log.debug("container name {s}", .{name});
     std.log.debug("container root dir {s}", .{cntRootDir});
@@ -23,9 +26,6 @@ pub fn deleteContainer(rootDir: ?[]const u8, name: []const u8) !void {
 
         return err;
     };
-
-    try cnts.lock();
-    defer cnts.unlock() catch {};
 
     if (!cnts.status.canDelete()) {
         return errors.Error.ContainerInvalidStatus;

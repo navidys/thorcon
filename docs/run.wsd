@@ -1,0 +1,27 @@
+@startuml
+
+participant highlevel as highlevel1
+participant create as create
+participant runtime as runtime
+participant process as process
+
+highlevel1 -> create: createContainer
+
+create -> runtime: clone
+runtime -> process: linux.clone
+runtime --> create: container PID
+
+process --> create: send_action(PreInitOK)
+create -> create: write uid and gid mappings
+create -> process: send_action(Init)
+process -> create: send_action(InitOK)
+create --> highlevel1
+
+participant start as start
+participant highlevel as highlevel2
+
+highlevel2 -> start: startContainer
+start -> process: send_action(Exec)
+start --> highlevel2:
+
+@enduml

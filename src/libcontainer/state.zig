@@ -78,6 +78,11 @@ pub const ContainerState = struct {
     }
 
     pub fn writeStateFile(self: @This()) !void {
+        try self.lock();
+        defer self.unlock() catch |err| {
+            std.log.err("container state unlock: {any}", .{err});
+        };
+
         const content = try utils.toJsonString(self, true);
         const content_newline = try std.mem.concat(
             std.heap.page_allocator,
@@ -88,21 +93,12 @@ pub const ContainerState = struct {
         try utils.writeFileContent(self.stateFile, content_newline);
     }
 
-    pub fn lock(self: @This()) !void {
-        const lockfile = try fs.cwd().openFile(self.lockFile, fs.File.OpenFlags{ .mode = .read_only });
-        defer lockfile.close();
-
-        try fs.File.lock(lockfile, .exclusive);
-    }
-
-    pub fn unlock(self: @This()) !void {
-        const lockfile = try fs.cwd().openFile(self.lockFile, fs.File.OpenFlags{ .mode = .read_only });
-        defer lockfile.close();
-
-        fs.File.unlock(lockfile);
-    }
-
     pub fn writePID(self: @This(), pid: usize) !void {
+        try self.lock();
+        defer self.unlock() catch |err| {
+            std.log.err("container state unlock: {any}", .{err});
+        };
+
         const cwd = std.fs.cwd();
         const createFlag = std.fs.File.CreateFlags{ .read = false };
         const file = try cwd.createFile(self.pidFile, createFlag);
@@ -115,6 +111,11 @@ pub const ContainerState = struct {
     }
 
     pub fn readPID(self: @This()) !usize {
+        try self.lock();
+        defer self.unlock() catch |err| {
+            std.log.err("container state unlock: {any}", .{err});
+        };
+
         const cwd = std.fs.cwd();
         const openFlag = std.fs.File.OpenFlags{ .mode = .read_only };
         const file = try cwd.openFile(self.pidFile, openFlag);
@@ -130,6 +131,15 @@ pub const ContainerState = struct {
         return pidVal;
     }
 
+    pub fn setStatus(self: *@This(), status: ContainerStatus) !void {
+        try self.lock();
+        defer self.unlock() catch |err| {
+            std.log.err("container state unlock: {any}", .{err});
+        };
+
+        self.status = status;
+    }
+
     fn getLockFileName(rootDir: []const u8) ![]const u8 {
         return std.fmt.allocPrint(std.heap.page_allocator, "{s}/{s}", .{ rootDir, LOCK_FILE });
     }
@@ -140,6 +150,20 @@ pub const ContainerState = struct {
 
     fn getPidFileName(rootDir: []const u8) ![]const u8 {
         return std.fmt.allocPrint(std.heap.page_allocator, "{s}/{s}", .{ rootDir, PID_FILE });
+    }
+
+    fn lock(self: @This()) !void {
+        const lockfile = try fs.cwd().openFile(self.lockFile, fs.File.OpenFlags{ .mode = .read_only });
+        defer lockfile.close();
+
+        try fs.File.lock(lockfile, .exclusive);
+    }
+
+    fn unlock(self: @This()) !void {
+        const lockfile = try fs.cwd().openFile(self.lockFile, fs.File.OpenFlags{ .mode = .read_only });
+        defer lockfile.close();
+
+        fs.File.unlock(lockfile);
     }
 };
 
