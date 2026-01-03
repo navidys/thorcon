@@ -17,16 +17,25 @@ const clone_flag = linux.CLONE;
 const fs = std.fs;
 const assert = std.debug.assert;
 
-pub fn createContainer(name: []const u8, rootdir: []const u8, bundle: []const u8, spec: []const u8, noPivot: bool) !void {
-    const runspec = try runtime.Spec.initFromFile(spec);
+pub const RuntimeOptions = struct {
+    name: []const u8,
+    bundle: []const u8,
+    rootdir: []const u8,
+    rootfs: []const u8,
+    spec: []const u8,
+    noPivot: bool,
+    runtimeSpec: runtime.Spec,
+};
 
+pub fn create(pid: i32, opts: *RuntimeOptions) !void {
     // init container state
-    var containerState = try initState(name, rootdir, bundle, spec, noPivot);
+
+    var containerState = try initState(pid, opts);
 
     // init container
-    const initInfo = try initContainer(containerState, runspec);
+    const initInfo = try initContainer(pid, opts.rootfs, opts.noPivot, opts.runtimeSpec);
 
-    // update containier stat e
+    // update containier start
     try containerState.setCommFDs(initInfo[1], initInfo[2]);
     try containerState.setStatus(cntstate.ContainerStatus.Created);
     try containerState.writeStateFile();
@@ -35,29 +44,16 @@ pub fn createContainer(name: []const u8, rootdir: []const u8, bundle: []const u8
     try containerState.writePID(initInfo[0]);
 }
 
-fn initState(name: []const u8, rootdir: []const u8, bundle: []const u8, spec: []const u8, noPivot: bool) !*cntstate.ContainerState {
-    const rootfs = try utils.getRootFSPath(bundle, spec.root.path);
-
-    std.log.debug("container name {s}", .{name});
-    std.log.debug("root directory: {s}", .{rootdir});
-    std.log.debug("bundle directory: {s}", .{bundle});
-    std.log.debug("runtime config: {s}", .{spec});
-    std.log.debug("rootfs: {s}", .{rootfs});
-
+fn initState(pid: i32, opts: *RuntimeOptions) !*cntstate.ContainerState {
     // init and write state file
     var containerState = try cntstate.ContainerState.init(
-        rootdir,
-        bundle,
-        rootfs,
-        spec,
-        noPivot,
+        pid,
+        opts.rootdir,
+        opts.rootdir,
+        opts.bundle,
+        opts.rootfs,
+        opts.noPivot,
     );
-
-    if (!containerState.status.canCreate()) {
-        std.log.err("cannot create container: {any}", .{errors.Error.ContainerInvalidStatus});
-
-        return errors.Error.ContainerInvalidStatus;
-    }
 
     try containerState.setStatus(cntstate.ContainerStatus.Creating);
     try containerState.writeStateFile();
@@ -65,8 +61,7 @@ fn initState(name: []const u8, rootdir: []const u8, bundle: []const u8, spec: []
     return &containerState;
 }
 
-fn initContainer(state: *cntstate.ContainerState, spec: runtime.Spec) !struct { usize, i32, i32 } {
-    const pid = std.os.linux.getpid();
+fn initContainer(pid: i32, rootfs: []const u8, noPivot: bool, spec: runtime.Spec) !struct { usize, i32, i32 } {
     std.log.debug("pid {} init container", .{pid});
 
     var pcomm = try channel.PChannel.init();
@@ -74,44 +69,44 @@ fn initContainer(state: *cntstate.ContainerState, spec: runtime.Spec) !struct { 
 
     const Args = std.meta.Tuple(&.{ []const u8, runtime.Spec, bool, *channel.PChannel, *channel.PChannel });
     const args: Args = .{
-        state.rootfsDir,
+        rootfs,
         spec,
-        state.noPivot,
+        noPivot,
         &pcomm,
         &ccomm,
     };
 
-    var flags: u32 = 0;
-    if (spec.linux) |rlinux| {
-        if (rlinux.namespaces) |namespaces| {
-            flags = @intCast(namespace.getUnshareFlags(pid, namespaces));
-        }
-    }
+    // var flags: u32 = 0;
+    // if (spec.linux) |rlinux| {
+    //    if (rlinux.namespaces) |namespaces| {
+    //        flags = @intCast(namespace.getUnshareFlags(pid, namespaces));
+    //    }
+    //}
 
     std.log.debug("pid {} process cloning", .{pid});
-    const childPID = try clone.clone(flags, process.prepareAndExecute, args);
+    const childPID = try clone.clone(0, process.prepareAndExecute, args);
 
     // write user map
-    std.log.debug("pid {} waiting for action {any}", .{ pid, channelAction.PreInitOK });
+    std.log.debug("pid {} waiting for action {any}", .{ pid, channelAction.UserMapRequest });
     while (true) {
         switch (try pcomm.receive()) {
-            channelAction.PreInitOK => {
+            channelAction.UserMapRequest => {
+                try namespace.writeMappings(pid, childPID, spec);
+
+                std.log.debug("pid {} sending action {any}", .{ pid, channelAction.UserMapOK });
+
+                try ccomm.send(channelAction.UserMapOK);
+
                 break;
             },
             else => {},
         }
     }
 
-    try writeMappings(pid, childPID, spec);
-
-    std.log.debug("pid {} sending action {any}", .{ pid, channelAction.Init });
-
-    try ccomm.send(channelAction.Init);
-
-    std.log.debug("pid {} waiting for action {any}", .{ pid, channelAction.InitOK });
+    std.log.debug("pid {} waiting for action {any}", .{ pid, channelAction.Ready });
     while (true) {
         switch (try pcomm.receive()) {
-            channelAction.InitOK => {
+            channelAction.Ready => {
                 break;
             },
             else => {},
@@ -127,19 +122,4 @@ fn initContainer(state: *cntstate.ContainerState, spec: runtime.Spec) !struct { 
     //}
 
     return .{ childPID, ccomm.reader, ccomm.writer };
-}
-
-fn writeMappings(pid: i32, tpid: usize, spec: runtime.Spec) !void {
-    if (utils.isRootLess()) {
-        if (spec.linux) |rlinux| {
-            if (rlinux.uidMappings) |uidmappings| {
-                try namespace.writeUidMappings(pid, tpid, uidmappings);
-            }
-
-            // TODO gid mapping is not working ???
-            // if (rlinux.gidMappings) |gidmappings| {
-            //    try namespace.writeGidMappings(pid, tpid, gidmappings);
-            // }
-        }
-    }
 }

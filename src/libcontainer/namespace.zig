@@ -73,13 +73,13 @@ pub fn getUnshareFlags(pid: i32, namespaces: []ocispec.runtime.LinuxNamespace) u
                     nsflags = nsflags | linux.CLONE.NEWTIME;
                 }
             },
-            nstype.User => {
-                if (nsflags == 0) {
-                    nsflags = linux.CLONE.NEWUSER;
-                } else {
-                    nsflags = nsflags | linux.CLONE.NEWUSER;
-                }
-            },
+            // nstype.User => {
+            //    if (nsflags == 0) {
+            //        nsflags = linux.CLONE.NEWUSER;
+            //    } else {
+            //        nsflags = nsflags | linux.CLONE.NEWUSER;
+            //    }
+            // },
             nstype.Uts => {
                 if (nsflags == 0) {
                     nsflags = linux.CLONE.NEWUTS;
@@ -87,10 +87,24 @@ pub fn getUnshareFlags(pid: i32, namespaces: []ocispec.runtime.LinuxNamespace) u
                     nsflags = nsflags | linux.CLONE.NEWUTS;
                 }
             },
+            else => {},
         }
     }
 
     return nsflags;
+}
+
+pub fn writeMappings(pid: i32, tpid: usize, spec: ocispec.runtime.Spec) !void {
+    if (spec.linux) |rlinux| {
+        if (rlinux.uidMappings) |uidmappings| {
+            try writeUidMappings(pid, tpid, uidmappings);
+        }
+
+        // TODO gid mapping is not working ???
+        // if (rlinux.gidMappings) |gidmappings| {
+        //    try namespace.writeGidMappings(pid, tpid, gidmappings);
+        // }
+    }
 }
 
 pub fn writeUidMappings(pid: i32, tpid: usize, mappings: []ocispec.runtime.LinuxIdMapping) !void {

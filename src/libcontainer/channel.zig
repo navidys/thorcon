@@ -2,36 +2,36 @@ const std = @import("std");
 
 pub const PChannelAction = enum {
     Undefined,
-    PreInitOK,
-    Init,
-    InitOK,
-    Exec,
+    UserMapRequest,
+    UserMapOK,
+    Ready,
+    Start,
 
     pub fn toString(self: PChannelAction) []const u8 {
         return switch (self) {
-            .PreInitOK => "pre_init_ok",
-            .Init => "init",
-            .InitOK => "init_ok",
-            .Exec => "exec",
+            .UserMapRequest => "user_map_request",
+            .UserMapOK => "user_map_ok",
+            .Ready => "ready",
+            .Start => "start",
             else => "undefined",
         };
     }
 
     pub fn fromString(val: []const u8) PChannelAction {
-        if (std.mem.eql(u8, val, "pre_init_ok")) {
-            return PChannelAction.PreInitOK;
+        if (std.mem.eql(u8, val, "user_map_request")) {
+            return PChannelAction.UserMapRequest;
         }
 
-        if (std.mem.eql(u8, val, "init")) {
-            return PChannelAction.Init;
+        if (std.mem.eql(u8, val, "user_map_ok")) {
+            return PChannelAction.UserMapOK;
         }
 
-        if (std.mem.eql(u8, val, "init_ok")) {
-            return PChannelAction.InitOK;
+        if (std.mem.eql(u8, val, "start")) {
+            return PChannelAction.Start;
         }
 
-        if (std.mem.eql(u8, val, "exec")) {
-            return PChannelAction.Exec;
+        if (std.mem.eql(u8, val, "ready")) {
+            return PChannelAction.Ready;
         }
 
         return PChannelAction.Undefined;

@@ -19,7 +19,10 @@ const uinstd = @cImport({
 });
 
 pub fn prepareAndExecute(rootfs: []const u8, spec: runtime.Spec, noPivot: bool, pcomm: *channel.PChannel, ccomm: *channel.PChannel) void {
-    const pid = std.os.linux.getpid();
+    var pid = std.os.linux.getpid();
+    // setup cgroup
+    // unshare newuser
+    // ask to write mapping
 
     //namespace.setContainerNamespaces(pid, spec) catch |err| {
     //    std.log.debug("pid {} container name space: {any}", .{ pid, err });
@@ -28,21 +31,60 @@ pub fn prepareAndExecute(rootfs: []const u8, spec: runtime.Spec, noPivot: bool, 
     //};
     // std.log.debug("pid {} required namespaces created", .{pid});
 
-    pcomm.send(channelAction.PreInitOK) catch {
+    // TODO setup cgroup
+
+    // unshare newuser namespace
+    switch (linux.E.init(linux.unshare(linux.CLONE.NEWUSER))) {
+        .SUCCESS => {},
+        else => |err| {
+            std.log.err("pid {} failed to set unshare newuser: {any}", .{ pid, err });
+
+            unreachable;
+        },
+    }
+
+    pcomm.send(channelAction.UserMapRequest) catch {
         unreachable;
     };
 
-    std.log.debug("pid {} waiting for action {any}", .{ pid, channelAction.Init });
+    std.log.debug("pid {} waiting for action {any}", .{ pid, channelAction.UserMapOK });
     while (true) {
         switch (ccomm.receive() catch unreachable) {
-            channelAction.Init => {
-                std.log.debug("pid {} action {any} received", .{ pid, channelAction.Init });
+            channelAction.UserMapOK => {
+                std.log.debug("pid {} action {any} received", .{ pid, channelAction.UserMapOK });
+
+                containerSetUidAndGid(pid, 0, 0) catch |err| {
+                    std.log.err("pid {} failed to set uid/gid: {any}", .{ pid, err });
+
+                    unreachable;
+                };
 
                 break;
             },
             else => {},
         }
     }
+
+    // set rest of namespace
+    // unshare newuser namespace
+    var unshareFlags: u32 = 0;
+    if (spec.linux) |rlinux| {
+        if (rlinux.namespaces) |namespaces| {
+            unshareFlags = @intCast(namespace.getUnshareFlags(pid, namespaces));
+        }
+    }
+
+    switch (linux.E.init(linux.unshare(unshareFlags))) {
+        .SUCCESS => {},
+        else => |err| {
+            std.log.err("pid {} failed to set unshare newuser: {any}", .{ pid, err });
+
+            unreachable;
+        },
+    }
+
+    pid = std.os.linux.getpid();
+    // mount rootfs
 
     mount.mountContainerRootFs(pid, rootfs) catch |err| {
         std.log.err("pid {} mount roofs: {any}", .{ pid, err });
@@ -121,15 +163,15 @@ pub fn prepareAndExecute(rootfs: []const u8, spec: runtime.Spec, noPivot: bool, 
         // unreachable;
     };
 
-    pcomm.send(channelAction.InitOK) catch {
+    pcomm.send(channelAction.Ready) catch {
         unreachable;
     };
 
-    std.log.debug("pid {} waiting for action {any}", .{ pid, channelAction.Exec });
+    std.log.debug("pid {} waiting for action {any}", .{ pid, channelAction.Start });
     while (true) {
         switch (ccomm.receive() catch unreachable) {
-            channelAction.Exec => {
-                std.log.debug("pid {} action {any} received", .{ pid, channelAction.Exec });
+            channelAction.Start => {
+                std.log.debug("pid {} action {any} received", .{ pid, channelAction.Start });
 
                 break;
             },

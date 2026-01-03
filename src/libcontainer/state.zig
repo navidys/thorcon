@@ -21,15 +21,15 @@ pub const ContainerState = struct {
     commReader: i32,
     commWriter: i32,
 
-    pub fn init(rootDir: []const u8, bundleDir: []const u8, rootfs: []const u8, spec: []const u8, noPivot: bool) !ContainerState {
+    pub fn init(pid: i32, rootDir: []const u8, bundleDir: []const u8, rootfs: []const u8, spec: []const u8, noPivot: bool) !ContainerState {
         const gpa = std.heap.page_allocator;
         const stateFile = try getStateFileName(rootDir);
         const pidfile = try getPidFileName(rootDir);
         const lockfile = try getLockFileName(rootDir);
 
-        std.log.debug("state file: {s}", .{stateFile});
-        std.log.debug("pid file: {s}", .{pidfile});
-        std.log.debug("lock file: {s}", .{lockfile});
+        std.log.debug("pid {} state file: {s}", .{ pid, stateFile });
+        std.log.debug("pid {} spid file: {s}", .{ pid, pidfile });
+        std.log.debug("pid {} slock file: {s}", .{ pid, lockfile });
 
         const currenTime = datetime.datetime.Datetime.now();
         const created = try currenTime.formatHttp(gpa);
@@ -218,12 +218,12 @@ pub const ContainerStatus = enum {
             .Running => return false,
             .Stopped => return true,
             .Paused => return true,
-            else => false,
+            .Undefined => return true,
         };
     }
 
     pub fn canDelete(self: @This()) bool {
-        return (self == .Stopped);
+        return (self == .Stopped or self == .Undefined);
     }
 
     pub fn canPause(self: @This()) bool {

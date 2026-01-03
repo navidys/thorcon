@@ -35,7 +35,7 @@ pub fn startContainer(rootDir: ?[]const u8, name: []const u8) !void {
 
     var comm = try channel.PChannel.initFromFDs(cntPID, cntstate.commReader, cntstate.commWriter);
 
-    try comm.sendWithFD(channelAction.Exec);
+    try comm.sendWithFD(channelAction.Start);
 
     try cntstate.setStatus(state.ContainerStatus.Running);
     try cntstate.writeStateFile();

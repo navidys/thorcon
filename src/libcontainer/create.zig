@@ -1,10 +1,12 @@
 const std = @import("std");
+const ocispec = @import("ocispec");
 const errors = @import("errors.zig");
 const utils = @import("utils.zig");
 const filesystem = @import("filesystem.zig");
 const runtime = @import("runtime.zig");
 const cleanup = @import("cleanup.zig");
 const cntstate = @import("state.zig");
+const namespace = @import("namespace.zig");
 
 pub const CreateOptions = struct {
     name: []const u8,
@@ -61,11 +63,27 @@ pub fn createContainer(rootDir: ?[]const u8, opts: *const CreateOptions) !void {
 }
 
 fn create(name: []const u8, rootdir: []const u8, bundle: []const u8, spec: []const u8, noPivot: bool) !void {
-    const fpid = try std.posix.fork();
+    const runspec = try ocispec.runtime.Spec.initFromFile(spec);
+    const rootfs = try utils.getRootFSPath(bundle, runspec.root.path);
 
-    if (fpid == 0) {
-        try runtime.createContainer(name, rootdir, bundle, spec, noPivot);
-    } else {
-        _ = std.posix.waitpid(fpid, 0);
-    }
+    const pid = std.os.linux.getpid();
+
+    std.log.debug("pid {} container name {s}", .{ pid, name });
+    std.log.debug("pid {} root directory: {s}", .{ pid, rootdir });
+    std.log.debug("pid {} bundle directory: {s}", .{ pid, bundle });
+    std.log.debug("pid {} runtime config: {s}", .{ pid, spec });
+    std.log.debug("pid {} rootfs: {s}", .{ pid, rootfs });
+    std.log.debug("pid {} noPivot: {any}", .{ pid, noPivot });
+
+    var options = runtime.RuntimeOptions{
+        .name = name,
+        .bundle = bundle,
+        .rootdir = rootdir,
+        .rootfs = rootfs,
+        .spec = spec,
+        .noPivot = noPivot,
+        .runtimeSpec = runspec,
+    };
+
+    try runtime.create(pid, &options);
 }
