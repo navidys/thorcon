@@ -33,7 +33,7 @@ pub fn ListContainers(rootDir: ?[]const u8) ![]ContainerReport {
             .directory => {
                 // load container state file
                 const cntRootDir = try std.fmt.allocPrint(gpa, "{s}/{s}", .{ rootdir, dirContent.name });
-                const containerState = cntstate.ContainerState.getContainerState(cntRootDir) catch continue;
+                const containerState = cntstate.ContainerState.initFromRootDir(cntRootDir) catch continue;
                 if (containerState.status != cntstate.ContainerStatus.Undefined) {
                     var pid: []const u8 = "";
                     const pidVal = containerState.readPID() catch 0;

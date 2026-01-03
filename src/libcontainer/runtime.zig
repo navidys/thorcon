@@ -33,21 +33,21 @@ pub fn create(pid: i32, opts: *RuntimeOptions) !void {
 
     // init container state
     var containerState = try initState(pid, opts);
+    containerState = try containerState.setStatus(cntstate.ContainerStatus.Creating);
 
     // init container
     const cid = try initContainer(pid, opts);
 
     // update containier start
-    try containerState.setStatus(cntstate.ContainerStatus.Created);
-    try containerState.writeStateFile();
+    containerState = try containerState.setStatus(cntstate.ContainerStatus.Created);
 
     // write PID file
     try containerState.writePID(cid);
 }
 
-fn initState(pid: i32, opts: *RuntimeOptions) !*cntstate.ContainerState {
+fn initState(pid: i32, opts: *RuntimeOptions) !cntstate.ContainerState {
     // init and write state file
-    var containerState = try cntstate.ContainerState.init(
+    const containerState = try cntstate.ContainerState.init(
         pid,
         opts.rootdir,
         opts.rootdir,
@@ -58,10 +58,7 @@ fn initState(pid: i32, opts: *RuntimeOptions) !*cntstate.ContainerState {
         opts.ccomm.writer,
     );
 
-    try containerState.setStatus(cntstate.ContainerStatus.Creating);
-    try containerState.writeStateFile();
-
-    return &containerState;
+    return containerState;
 }
 
 fn initContainer(pid: i32, opts: *RuntimeOptions) !usize {

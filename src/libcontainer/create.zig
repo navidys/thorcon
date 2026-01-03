@@ -39,7 +39,7 @@ pub fn createContainer(rootDir: ?[]const u8, opts: *const CreateOptions) !void {
 
     try cleanup.refreshAllContainersState(rootdir);
 
-    const cntStateResult = cntstate.ContainerState.getContainerState(cntRootDir);
+    const cntStateResult = cntstate.ContainerState.initFromRootDir(cntRootDir);
     var canCreate = false;
 
     if (cntStateResult) |result| {

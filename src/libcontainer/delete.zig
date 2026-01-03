@@ -19,7 +19,7 @@ pub fn deleteContainer(rootDir: ?[]const u8, name: []const u8) !void {
     std.log.debug("container name {s}", .{name});
     std.log.debug("container root dir {s}", .{cntRootDir});
 
-    var cnts = cntstate.ContainerState.getContainerState(cntRootDir) catch |err| {
+    var cnts = cntstate.ContainerState.initFromRootDir(cntRootDir) catch |err| {
         if (err == std.fs.File.OpenError.FileNotFound) {
             return errors.Error.ContainerNotFound;
         }

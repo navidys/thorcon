@@ -19,7 +19,7 @@ pub fn startContainer(rootDir: ?[]const u8, name: []const u8) !void {
 
     try cleanup.refreshAllContainersState(rootdir);
 
-    var cntstate = state.ContainerState.getContainerState(cntRootDir) catch |err| {
+    var cntstate = state.ContainerState.initFromRootDir(cntRootDir) catch |err| {
         if (err == std.fs.File.OpenError.FileNotFound) {
             return errors.Error.ContainerNotFound;
         }
@@ -37,6 +37,5 @@ pub fn startContainer(rootDir: ?[]const u8, name: []const u8) !void {
 
     try comm.sendWithFD(channelAction.Start);
 
-    try cntstate.setStatus(state.ContainerStatus.Running);
-    try cntstate.writeStateFile();
+    cntstate = try cntstate.setStatus(state.ContainerStatus.Running);
 }

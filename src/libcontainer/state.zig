@@ -52,7 +52,7 @@ pub const ContainerState = struct {
         };
     }
 
-    pub fn getContainerState(rootDir: []const u8) !ContainerState {
+    pub fn initFromRootDir(rootDir: []const u8) !ContainerState {
         const lfile = try getLockFileName(rootDir);
         const lockfile = try fs.cwd().openFile(lfile, fs.File.OpenFlags{ .mode = .read_only });
         defer lockfile.close();
@@ -131,13 +131,18 @@ pub const ContainerState = struct {
         return pidVal;
     }
 
-    pub fn setStatus(self: *@This(), status: ContainerStatus) !void {
+    pub fn setStatus(self: @This(), status: ContainerStatus) !ContainerState {
         try self.lock();
         defer self.unlock() catch |err| {
             std.log.err("container state unlock: {any}", .{err});
         };
 
-        self.status = status;
+        var st = self;
+        st.status = status;
+
+        try st.writeStateFile();
+
+        return st;
     }
 
     fn getLockFileName(rootDir: []const u8) ![]const u8 {
