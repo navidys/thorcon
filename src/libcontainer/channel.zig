@@ -2,36 +2,42 @@ const std = @import("std");
 
 pub const PChannelAction = enum {
     Undefined,
-    PreInitOK,
+    UserMapRequest,
+    UserMapOK,
     Init,
-    InitOK,
-    Exec,
+    Ready,
+    Start,
 
     pub fn toString(self: PChannelAction) []const u8 {
         return switch (self) {
-            .PreInitOK => "pre_init_ok",
+            .UserMapRequest => "user_map_request",
+            .UserMapOK => "user_map_ok",
+            .Ready => "ready",
+            .Start => "start",
             .Init => "init",
-            .InitOK => "init_ok",
-            .Exec => "exec",
             else => "undefined",
         };
     }
 
     pub fn fromString(val: []const u8) PChannelAction {
-        if (std.mem.eql(u8, val, "pre_init_ok")) {
-            return PChannelAction.PreInitOK;
+        if (std.mem.eql(u8, val, "user_map_request")) {
+            return PChannelAction.UserMapRequest;
+        }
+
+        if (std.mem.eql(u8, val, "user_map_ok")) {
+            return PChannelAction.UserMapOK;
+        }
+
+        if (std.mem.eql(u8, val, "start")) {
+            return PChannelAction.Start;
+        }
+
+        if (std.mem.eql(u8, val, "ready")) {
+            return PChannelAction.Ready;
         }
 
         if (std.mem.eql(u8, val, "init")) {
             return PChannelAction.Init;
-        }
-
-        if (std.mem.eql(u8, val, "init_ok")) {
-            return PChannelAction.InitOK;
-        }
-
-        if (std.mem.eql(u8, val, "exec")) {
-            return PChannelAction.Exec;
         }
 
         return PChannelAction.Undefined;
@@ -71,21 +77,31 @@ pub const PChannel = struct {
         _ = try std.posix.write(file.handle, value.toString());
     }
 
-    pub fn send(self: *Self, value: PChannelAction) !void {
-        std.debug.print("debug: channel action send {any}\n", .{value});
+    pub fn send(self: *Self, value: PChannelAction, data: anytype) !void {
+        std.debug.print("debug: channel action send {any} data {any}\n", .{ value, data });
 
-        _ = try std.posix.write(self.writer, value.toString());
+        const sendData = try std.fmt.allocPrint(std.heap.page_allocator, "{s}:{any}", .{ value.toString(), data });
+
+        _ = try std.posix.write(self.writer, sendData);
     }
 
-    pub fn receive(self: *Self) !PChannelAction {
+    pub fn receive(self: *Self) !struct { PChannelAction, []const u8 } {
         std.debug.print("debug: channel action receive loop started\n", .{});
         while (true) {
             var buffer: [1024]u8 = undefined;
+            var rbuffer: []const u8 = "";
             const rsize = try std.posix.read(self.reader, &buffer);
+            const rawData = buffer[0..rsize];
+            var recvData = std.mem.tokenizeSequence(u8, rawData, ":");
+            if (recvData.next()) |val| {
+                const actVal = PChannelAction.fromString(val);
+                if (actVal != PChannelAction.Undefined) {
+                    if (recvData.next()) |dval| {
+                        rbuffer = dval;
+                    }
 
-            const actVal = PChannelAction.fromString(buffer[0..rsize]);
-            if (actVal != PChannelAction.Undefined) {
-                return actVal;
+                    return .{ actVal, rbuffer };
+                }
             }
         }
     }

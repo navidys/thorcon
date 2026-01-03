@@ -1,7 +1,7 @@
 const cntstate = @import("state.zig");
 const filesystem = @import("filesystem.zig");
 const errors = @import("errors.zig");
-
+const cleanup = @import("cleanup.zig");
 const std = @import("std");
 
 pub const ContainerReport = struct {
@@ -18,6 +18,8 @@ pub fn ListContainers(rootDir: ?[]const u8) ![]ContainerReport {
 
     std.log.debug("root directory: {s}", .{rootdir});
 
+    try cleanup.refreshAllContainersState(rootdir);
+
     var root = try std.fs.cwd().openDir(rootdir, .{ .iterate = true });
 
     defer root.close();
@@ -31,7 +33,7 @@ pub fn ListContainers(rootDir: ?[]const u8) ![]ContainerReport {
             .directory => {
                 // load container state file
                 const cntRootDir = try std.fmt.allocPrint(gpa, "{s}/{s}", .{ rootdir, dirContent.name });
-                const containerState = cntstate.ContainerState.getContainerState(cntRootDir) catch continue;
+                const containerState = cntstate.ContainerState.initFromRootDir(cntRootDir) catch continue;
                 if (containerState.status != cntstate.ContainerStatus.Undefined) {
                     var pid: []const u8 = "";
                     const pidVal = containerState.readPID() catch 0;
