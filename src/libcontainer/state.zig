@@ -110,6 +110,16 @@ pub const ContainerState = struct {
         _ = try file.write(content);
     }
 
+    pub fn removePID(self: @This()) !void {
+        try self.lock();
+        defer self.unlock() catch |err| {
+            std.log.err("container state unlock: {any}", .{err});
+        };
+
+        const cwd = std.fs.cwd();
+        try cwd.deleteFile(self.pidFile);
+    }
+
     pub fn readPID(self: @This()) !usize {
         try self.lock();
         defer self.unlock() catch |err| {

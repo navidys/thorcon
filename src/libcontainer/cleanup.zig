@@ -22,6 +22,7 @@ pub fn refreshAllContainersState(rootDir: []const u8) !void {
                         std.posix.kill(posixPID, 0) catch |err| {
                             if (err == error.ProcessNotFound) {
                                 containerState = try containerState.setStatus(cntstatus.Stopped);
+                                try containerState.removePID();
                             }
                         };
                     }

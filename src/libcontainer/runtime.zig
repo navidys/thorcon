@@ -38,11 +38,25 @@ pub fn create(pid: i32, opts: *RuntimeOptions) !void {
     // init container
     const cid = try initContainer(pid, opts);
 
+    // write PID
+    try containerState.writePID(@intCast(cid));
+
     // update containier start
     containerState = try containerState.setStatus(cntstate.ContainerStatus.Created);
 
-    // write PID file
-    try containerState.writePID(cid);
+    // wait for ready and exit
+    std.log.debug("pid {} waiting for action {any}", .{ pid, channelAction.Ready });
+    while (true) {
+        const recvData = try opts.pcomm.receive();
+        const actVal = recvData.@"0";
+
+        switch (actVal) {
+            channelAction.Ready => {
+                break;
+            },
+            else => {},
+        }
+    }
 }
 
 fn initState(pid: i32, opts: *RuntimeOptions) !cntstate.ContainerState {
@@ -61,7 +75,7 @@ fn initState(pid: i32, opts: *RuntimeOptions) !cntstate.ContainerState {
     return containerState;
 }
 
-fn initContainer(pid: i32, opts: *RuntimeOptions) !usize {
+fn initContainer(pid: i32, opts: *RuntimeOptions) !i32 {
     std.log.debug("pid {} init container", .{pid});
 
     const Args = std.meta.Tuple(&.{*RuntimeOptions});
@@ -90,26 +104,22 @@ fn initContainer(pid: i32, opts: *RuntimeOptions) !usize {
         }
     }
 
-    std.log.debug("pid {} waiting for action {any}", .{ pid, channelAction.Ready });
+    var cntPID: i32 = -1;
+    std.log.debug("pid {} waiting for action {any}", .{ pid, channelAction.Init });
     while (true) {
         const recvData = try opts.pcomm.receive();
         const actVal = recvData.@"0";
+        const actData = recvData.@"1";
 
         switch (actVal) {
-            channelAction.Ready => {
+            channelAction.Init => {
+                cntPID = try std.fmt.parseInt(i32, actData, 10);
+
                 break;
             },
             else => {},
         }
     }
 
-    // switch (posix.E.init(posix.waitpid(@intCast(childPID), 0).status)) {
-    //    .SUCCESS => std.log.debug("pid {} child cloned process has terminated", .{pid}),
-    //    else => |err| {
-    //        std.log.err("pid {} unexpectedErrno: {any}", .{ pid, err });
-    //        return errors.Error.ProcessCloneError;
-    //    },
-    //}
-
-    return childPID;
+    return cntPID;
 }

@@ -84,6 +84,10 @@ pub fn processPrep(opts: *runtime.RuntimeOptions) void {
         unreachable;
     };
 
+    opts.pcomm.send(channelAction.Init, childPID) catch {
+        unreachable;
+    };
+
     std.log.debug("pid {} process init cloned {}", .{ pid, childPID });
 }
 

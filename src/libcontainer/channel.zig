@@ -4,6 +4,7 @@ pub const PChannelAction = enum {
     Undefined,
     UserMapRequest,
     UserMapOK,
+    Init,
     Ready,
     Start,
 
@@ -13,6 +14,7 @@ pub const PChannelAction = enum {
             .UserMapOK => "user_map_ok",
             .Ready => "ready",
             .Start => "start",
+            .Init => "init",
             else => "undefined",
         };
     }
@@ -32,6 +34,10 @@ pub const PChannelAction = enum {
 
         if (std.mem.eql(u8, val, "ready")) {
             return PChannelAction.Ready;
+        }
+
+        if (std.mem.eql(u8, val, "init")) {
+            return PChannelAction.Init;
         }
 
         return PChannelAction.Undefined;
