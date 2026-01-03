@@ -1,7 +1,7 @@
 # thorcon
 Thor Container Runtime (**thorcon**) is a simple container runtime written in Zig
 
-`NOTE:` project is in early phase of development and feel free to contribute.
+`NOTE:` we are in early phase of development and feel free to contribute.
 check available [commands](#commands) and [features](#features) (feel free to contribute)
 
 ## Development Environment

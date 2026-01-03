@@ -38,9 +38,6 @@ pub fn create(pid: i32, opts: *RuntimeOptions) !void {
     // init container
     const cid = try initContainer(pid, opts);
 
-    // write PID
-    try containerState.writePID(@intCast(cid));
-
     // update containier start
     containerState = try containerState.setStatus(cntstate.ContainerStatus.Created);
 
@@ -52,6 +49,9 @@ pub fn create(pid: i32, opts: *RuntimeOptions) !void {
 
         switch (actVal) {
             channelAction.Ready => {
+                // write PID
+                try containerState.writePID(@intCast(cid));
+
                 break;
             },
             else => {},
