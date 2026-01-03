@@ -187,7 +187,7 @@ pub fn processInit(opts: *runtime.RuntimeOptions) void {
     }
 
     // execute CMD and set ENV paths
-    switch (linux.E.init(linux.execve("/bin/sh", &.{"sh"}, &.{""}))) {
+    switch (linux.E.init(linux.execve("/bin/sh", &.{"whoami"}, &.{""}))) {
         .SUCCESS => {},
         else => |err| {
             std.log.debug("pid {} execve error: {any}", .{ pid, err });
