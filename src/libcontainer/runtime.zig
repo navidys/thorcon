@@ -73,13 +73,16 @@ fn initContainer(pid: i32, opts: *RuntimeOptions) !usize {
     // write user map
     std.log.debug("pid {} waiting for action {any}", .{ pid, channelAction.UserMapRequest });
     while (true) {
-        switch (try opts.pcomm.receive()) {
+        const recvData = try opts.pcomm.receive();
+        const actVal = recvData.@"0";
+
+        switch (actVal) {
             channelAction.UserMapRequest => {
                 try namespace.writeMappings(pid, childPID, opts.runtimeSpec);
 
                 std.log.debug("pid {} sending action {any}", .{ pid, channelAction.UserMapOK });
 
-                try opts.ccomm.send(channelAction.UserMapOK);
+                try opts.ccomm.send(channelAction.UserMapOK, null);
 
                 break;
             },
@@ -89,7 +92,10 @@ fn initContainer(pid: i32, opts: *RuntimeOptions) !usize {
 
     std.log.debug("pid {} waiting for action {any}", .{ pid, channelAction.Ready });
     while (true) {
-        switch (try opts.pcomm.receive()) {
+        const recvData = try opts.pcomm.receive();
+        const actVal = recvData.@"0";
+
+        switch (actVal) {
             channelAction.Ready => {
                 break;
             },

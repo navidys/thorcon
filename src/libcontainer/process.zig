@@ -34,13 +34,16 @@ pub fn processPrep(opts: *runtime.RuntimeOptions) void {
         },
     }
 
-    opts.pcomm.send(channelAction.UserMapRequest) catch {
+    opts.pcomm.send(channelAction.UserMapRequest, null) catch {
         unreachable;
     };
 
     std.log.debug("pid {} waiting for action {any}", .{ pid, channelAction.UserMapOK });
     while (true) {
-        switch (opts.ccomm.receive() catch unreachable) {
+        const recvData = opts.ccomm.receive() catch unreachable;
+        const ccomm = recvData.@"0";
+
+        switch (ccomm) {
             channelAction.UserMapOK => {
                 std.log.debug("pid {} action {any} received", .{ pid, channelAction.UserMapOK });
 
@@ -170,13 +173,15 @@ pub fn processInit(opts: *runtime.RuntimeOptions) void {
         // unreachable;
     };
 
-    opts.pcomm.send(channelAction.Ready) catch {
+    opts.pcomm.send(channelAction.Ready, null) catch {
         unreachable;
     };
 
     std.log.debug("pid {} waiting for action {any}", .{ pid, channelAction.Start });
     while (true) {
-        switch (opts.ccomm.receive() catch unreachable) {
+        const recvData = opts.ccomm.receive() catch unreachable;
+        const actval = recvData.@"0";
+        switch (actval) {
             channelAction.Start => {
                 std.log.debug("pid {} action {any} received", .{ pid, channelAction.Start });
 
