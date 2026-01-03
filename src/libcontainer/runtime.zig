@@ -25,23 +25,24 @@ pub const RuntimeOptions = struct {
     spec: []const u8,
     noPivot: bool,
     runtimeSpec: runtime.Spec,
+    pcomm: *channel.PChannel,
+    ccomm: *channel.PChannel,
 };
 
 pub fn create(pid: i32, opts: *RuntimeOptions) !void {
-    // init container state
 
+    // init container state
     var containerState = try initState(pid, opts);
 
     // init container
-    const initInfo = try initContainer(pid, opts.rootfs, opts.noPivot, opts.runtimeSpec);
+    const cid = try initContainer(pid, opts);
 
     // update containier start
-    try containerState.setCommFDs(initInfo[1], initInfo[2]);
     try containerState.setStatus(cntstate.ContainerStatus.Created);
     try containerState.writeStateFile();
 
     // write PID file
-    try containerState.writePID(initInfo[0]);
+    try containerState.writePID(cid);
 }
 
 fn initState(pid: i32, opts: *RuntimeOptions) !*cntstate.ContainerState {
@@ -53,6 +54,8 @@ fn initState(pid: i32, opts: *RuntimeOptions) !*cntstate.ContainerState {
         opts.bundle,
         opts.rootfs,
         opts.noPivot,
+        opts.ccomm.reader,
+        opts.ccomm.writer,
     );
 
     try containerState.setStatus(cntstate.ContainerStatus.Creating);
@@ -61,41 +64,25 @@ fn initState(pid: i32, opts: *RuntimeOptions) !*cntstate.ContainerState {
     return &containerState;
 }
 
-fn initContainer(pid: i32, rootfs: []const u8, noPivot: bool, spec: runtime.Spec) !struct { usize, i32, i32 } {
+fn initContainer(pid: i32, opts: *RuntimeOptions) !usize {
     std.log.debug("pid {} init container", .{pid});
 
-    var pcomm = try channel.PChannel.init();
-    var ccomm = try channel.PChannel.init();
-
-    const Args = std.meta.Tuple(&.{ []const u8, runtime.Spec, bool, *channel.PChannel, *channel.PChannel });
-    const args: Args = .{
-        rootfs,
-        spec,
-        noPivot,
-        &pcomm,
-        &ccomm,
-    };
-
-    // var flags: u32 = 0;
-    // if (spec.linux) |rlinux| {
-    //    if (rlinux.namespaces) |namespaces| {
-    //        flags = @intCast(namespace.getUnshareFlags(pid, namespaces));
-    //    }
-    //}
+    const Args = std.meta.Tuple(&.{*RuntimeOptions});
+    const args: Args = .{opts};
 
     std.log.debug("pid {} process cloning", .{pid});
-    const childPID = try clone.clone(0, process.prepareAndExecute, args);
+    const childPID = try clone.clone(0, process.processPrep, args);
 
     // write user map
     std.log.debug("pid {} waiting for action {any}", .{ pid, channelAction.UserMapRequest });
     while (true) {
-        switch (try pcomm.receive()) {
+        switch (try opts.pcomm.receive()) {
             channelAction.UserMapRequest => {
-                try namespace.writeMappings(pid, childPID, spec);
+                try namespace.writeMappings(pid, childPID, opts.runtimeSpec);
 
                 std.log.debug("pid {} sending action {any}", .{ pid, channelAction.UserMapOK });
 
-                try ccomm.send(channelAction.UserMapOK);
+                try opts.ccomm.send(channelAction.UserMapOK);
 
                 break;
             },
@@ -105,7 +92,7 @@ fn initContainer(pid: i32, rootfs: []const u8, noPivot: bool, spec: runtime.Spec
 
     std.log.debug("pid {} waiting for action {any}", .{ pid, channelAction.Ready });
     while (true) {
-        switch (try pcomm.receive()) {
+        switch (try opts.pcomm.receive()) {
             channelAction.Ready => {
                 break;
             },
@@ -121,5 +108,5 @@ fn initContainer(pid: i32, rootfs: []const u8, noPivot: bool, spec: runtime.Spec
     //    },
     //}
 
-    return .{ childPID, ccomm.reader, ccomm.writer };
+    return childPID;
 }

@@ -29,9 +29,10 @@ pub fn getUnshareFlags(pid: i32, namespaces: []ocispec.runtime.LinuxNamespace) u
     var nsflags: usize = 0;
 
     for (namespaces) |ns| {
-        std.log.debug("pid {} {}", .{ pid, ns.type });
         switch (ns.type) {
             nstype.Cgroup => {
+                std.log.debug("pid {} {}", .{ pid, ns.type });
+
                 if (nsflags == 0) {
                     nsflags = linux.CLONE.NEWCGROUP;
                 } else {
@@ -39,6 +40,8 @@ pub fn getUnshareFlags(pid: i32, namespaces: []ocispec.runtime.LinuxNamespace) u
                 }
             },
             nstype.Ipc => {
+                std.log.debug("pid {} {}", .{ pid, ns.type });
+
                 if (nsflags == 0) {
                     nsflags = linux.CLONE.NEWIPC;
                 } else {
@@ -46,6 +49,8 @@ pub fn getUnshareFlags(pid: i32, namespaces: []ocispec.runtime.LinuxNamespace) u
                 }
             },
             nstype.Mount => {
+                std.log.debug("pid {} {}", .{ pid, ns.type });
+
                 if (nsflags == 0) {
                     nsflags = linux.CLONE.NEWNS;
                 } else {
@@ -53,20 +58,25 @@ pub fn getUnshareFlags(pid: i32, namespaces: []ocispec.runtime.LinuxNamespace) u
                 }
             },
             nstype.Network => {
+                std.log.debug("pid {} {}", .{ pid, ns.type });
+
                 if (nsflags == 0) {
                     nsflags = linux.CLONE.NEWNET;
                 } else {
                     nsflags = nsflags | linux.CLONE.NEWNET;
                 }
             },
-            nstype.Pid => {
-                if (nsflags == 0) {
-                    nsflags = linux.CLONE.NEWPID;
-                } else {
-                    nsflags = nsflags | linux.CLONE.NEWPID;
-                }
-            },
+            // nstype.Pid => {
+            //    std.log.debug("pid {} {}", .{ pid, ns.type });
+            //    if (nsflags == 0) {
+            //        nsflags = linux.CLONE.NEWPID;
+            //    } else {
+            //        nsflags = nsflags | linux.CLONE.NEWPID;
+            //    }
+            //},
             nstype.Time => {
+                std.log.debug("pid {} {}", .{ pid, ns.type });
+
                 if (nsflags == 0) {
                     nsflags = linux.CLONE.NEWTIME;
                 } else {
@@ -74,6 +84,7 @@ pub fn getUnshareFlags(pid: i32, namespaces: []ocispec.runtime.LinuxNamespace) u
                 }
             },
             // nstype.User => {
+            //    std.log.debug("pid {} {}", .{ pid, ns.type });
             //    if (nsflags == 0) {
             //        nsflags = linux.CLONE.NEWUSER;
             //    } else {
@@ -81,6 +92,7 @@ pub fn getUnshareFlags(pid: i32, namespaces: []ocispec.runtime.LinuxNamespace) u
             //    }
             // },
             nstype.Uts => {
+                std.log.debug("pid {} {}", .{ pid, ns.type });
                 if (nsflags == 0) {
                     nsflags = linux.CLONE.NEWUTS;
                 } else {

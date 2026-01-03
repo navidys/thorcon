@@ -7,10 +7,12 @@ const filesystem = @import("filesystem.zig");
 const namespace = @import("namespace.zig");
 const mount = @import("mount.zig");
 const channel = @import("channel.zig");
+const runtime = @import("runtime.zig");
+const clone = @import("clone.zig");
 const channelAction = channel.PChannelAction;
 const posix = std.posix;
 const linux = std.os.linux;
-const runtime = ocispec.runtime;
+const runtimeSpec = ocispec.runtime.Spec;
 
 const DEFAULT_HOSTNAME: []const u8 = "thorcon";
 
@@ -18,20 +20,9 @@ const uinstd = @cImport({
     @cInclude("unistd.h");
 });
 
-pub fn prepareAndExecute(rootfs: []const u8, spec: runtime.Spec, noPivot: bool, pcomm: *channel.PChannel, ccomm: *channel.PChannel) void {
-    var pid = std.os.linux.getpid();
+pub fn processPrep(opts: *runtime.RuntimeOptions) void {
+    const pid = std.os.linux.getpid();
     // setup cgroup
-    // unshare newuser
-    // ask to write mapping
-
-    //namespace.setContainerNamespaces(pid, spec) catch |err| {
-    //    std.log.debug("pid {} container name space: {any}", .{ pid, err });
-    //
-    //    unreachable;
-    //};
-    // std.log.debug("pid {} required namespaces created", .{pid});
-
-    // TODO setup cgroup
 
     // unshare newuser namespace
     switch (linux.E.init(linux.unshare(linux.CLONE.NEWUSER))) {
@@ -43,13 +34,13 @@ pub fn prepareAndExecute(rootfs: []const u8, spec: runtime.Spec, noPivot: bool, 
         },
     }
 
-    pcomm.send(channelAction.UserMapRequest) catch {
+    opts.pcomm.send(channelAction.UserMapRequest) catch {
         unreachable;
     };
 
     std.log.debug("pid {} waiting for action {any}", .{ pid, channelAction.UserMapOK });
     while (true) {
-        switch (ccomm.receive() catch unreachable) {
+        switch (opts.ccomm.receive() catch unreachable) {
             channelAction.UserMapOK => {
                 std.log.debug("pid {} action {any} received", .{ pid, channelAction.UserMapOK });
 
@@ -65,16 +56,7 @@ pub fn prepareAndExecute(rootfs: []const u8, spec: runtime.Spec, noPivot: bool, 
         }
     }
 
-    // set rest of namespace
-    // unshare newuser namespace
-    var unshareFlags: u32 = 0;
-    if (spec.linux) |rlinux| {
-        if (rlinux.namespaces) |namespaces| {
-            unshareFlags = @intCast(namespace.getUnshareFlags(pid, namespaces));
-        }
-    }
-
-    switch (linux.E.init(linux.unshare(unshareFlags))) {
+    switch (linux.E.init(linux.unshare(linux.CLONE.NEWPID))) {
         .SUCCESS => {},
         else => |err| {
             std.log.err("pid {} failed to set unshare newuser: {any}", .{ pid, err });
@@ -83,10 +65,35 @@ pub fn prepareAndExecute(rootfs: []const u8, spec: runtime.Spec, noPivot: bool, 
         },
     }
 
-    pid = std.os.linux.getpid();
+    const Args = std.meta.Tuple(&.{*runtime.RuntimeOptions});
+    const args: Args = .{opts};
+
+    var unshareFlags: u32 = 0;
+    if (opts.runtimeSpec.linux) |rlinux| {
+        if (rlinux.namespaces) |namespaces| {
+            unshareFlags = @intCast(namespace.getUnshareFlags(pid, namespaces));
+        }
+    }
+
+    const childPID = clone.clone(unshareFlags, process.processInit, args) catch |err| {
+        std.log.err("pid {} failed clone init process: {any}", .{ pid, err });
+
+        unreachable;
+    };
+
+    std.log.debug("pid {} process init cloned {}", .{ pid, childPID });
+}
+
+pub fn processInit(opts: *runtime.RuntimeOptions) void {
+    const pid = std.os.linux.getpid();
+    std.log.debug("pid {} process init started", .{pid});
+
+    // set rest of namespace
+    // unshare newuser namespace
+
     // mount rootfs
 
-    mount.mountContainerRootFs(pid, rootfs) catch |err| {
+    mount.mountContainerRootFs(pid, opts.rootfs) catch |err| {
         std.log.err("pid {} mount roofs: {any}", .{ pid, err });
 
         unreachable;
@@ -94,7 +101,7 @@ pub fn prepareAndExecute(rootfs: []const u8, spec: runtime.Spec, noPivot: bool, 
 
     // setup hostname and domain name
     var hostname = DEFAULT_HOSTNAME;
-    if (spec.hostname) |cnthostname| {
+    if (opts.runtimeSpec.hostname) |cnthostname| {
         hostname = cnthostname;
     }
 
@@ -104,7 +111,7 @@ pub fn prepareAndExecute(rootfs: []const u8, spec: runtime.Spec, noPivot: bool, 
         unreachable;
     };
 
-    if (spec.domainname) |cntdomainname| {
+    if (opts.runtimeSpec.domainname) |cntdomainname| {
         containerSetDomainname(pid, cntdomainname) catch |err| {
             std.log.err("pid {} set domain name error: {any}", .{ pid, err });
 
@@ -113,7 +120,7 @@ pub fn prepareAndExecute(rootfs: []const u8, spec: runtime.Spec, noPivot: bool, 
     }
 
     // set working directory, uid and gid
-    if (spec.process) |cprocess| {
+    if (opts.runtimeSpec.process) |cprocess| {
         containerSetCwd(pid, cprocess.cwd) catch |err| {
             std.log.err("pid {} set working directory error: {any}", .{ pid, err });
 
@@ -128,14 +135,14 @@ pub fn prepareAndExecute(rootfs: []const u8, spec: runtime.Spec, noPivot: bool, 
     }
 
     // pivot root or chroot to rootfs
-    if (noPivot) {
-        filesystem.setChrootRootFs(pid, rootfs) catch |err| {
+    if (opts.noPivot) {
+        filesystem.setChrootRootFs(pid, opts.rootfs) catch |err| {
             std.log.err("pid {} chroot error: {any}", .{ pid, err });
 
             unreachable;
         };
     } else {
-        filesystem.setPivotRootFs(pid, rootfs) catch |err| {
+        filesystem.setPivotRootFs(pid, opts.rootfs) catch |err| {
             std.log.err("pid {} pivot_root error: {any}", .{ pid, err });
 
             unreachable;
@@ -143,33 +150,33 @@ pub fn prepareAndExecute(rootfs: []const u8, spec: runtime.Spec, noPivot: bool, 
     }
 
     // mount filesystems
-    mount.mountContainerMounts(pid, spec) catch |err| {
+    mount.mountContainerMounts(pid, opts.runtimeSpec) catch |err| {
         std.log.err("pid {}: {any}", .{ pid, err });
 
         unreachable;
     };
 
     // set masked path
-    mount.setContainerMaskedPath(pid, spec) catch |err| {
+    mount.setContainerMaskedPath(pid, opts.runtimeSpec) catch |err| {
         std.log.err("pid {}: {any}", .{ pid, err });
 
         // unreachable;
     };
 
     // set readonly path
-    mount.setContainerReadOnlyPath(pid, spec) catch |err| {
+    mount.setContainerReadOnlyPath(pid, opts.runtimeSpec) catch |err| {
         std.log.err("pid {}: {any}", .{ pid, err });
 
         // unreachable;
     };
 
-    pcomm.send(channelAction.Ready) catch {
+    opts.pcomm.send(channelAction.Ready) catch {
         unreachable;
     };
 
     std.log.debug("pid {} waiting for action {any}", .{ pid, channelAction.Start });
     while (true) {
-        switch (ccomm.receive() catch unreachable) {
+        switch (opts.ccomm.receive() catch unreachable) {
             channelAction.Start => {
                 std.log.debug("pid {} action {any} received", .{ pid, channelAction.Start });
 

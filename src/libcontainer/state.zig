@@ -21,7 +21,7 @@ pub const ContainerState = struct {
     commReader: i32,
     commWriter: i32,
 
-    pub fn init(pid: i32, rootDir: []const u8, bundleDir: []const u8, rootfs: []const u8, spec: []const u8, noPivot: bool) !ContainerState {
+    pub fn init(pid: i32, rootDir: []const u8, bundleDir: []const u8, rootfs: []const u8, spec: []const u8, noPivot: bool, reader: i32, writer: i32) !ContainerState {
         const gpa = std.heap.page_allocator;
         const stateFile = try getStateFileName(rootDir);
         const pidfile = try getPidFileName(rootDir);
@@ -47,8 +47,8 @@ pub const ContainerState = struct {
             .stateFile = stateFile,
             .lockFile = lockfile,
             .created = created,
-            .commReader = -1,
-            .commWriter = -1,
+            .commReader = reader,
+            .commWriter = writer,
         };
     }
 
@@ -138,16 +138,6 @@ pub const ContainerState = struct {
         };
 
         self.status = status;
-    }
-
-    pub fn setCommFDs(self: *@This(), reader: i32, writer: i32) !void {
-        try self.lock();
-        defer self.unlock() catch |err| {
-            std.log.err("container state unlock: {any}", .{err});
-        };
-
-        self.commReader = reader;
-        self.commWriter = writer;
     }
 
     fn getLockFileName(rootDir: []const u8) ![]const u8 {

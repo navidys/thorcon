@@ -5,6 +5,7 @@ const utils = @import("utils.zig");
 const filesystem = @import("filesystem.zig");
 const runtime = @import("runtime.zig");
 const cleanup = @import("cleanup.zig");
+const channel = @import("channel.zig");
 const cntstate = @import("state.zig");
 const namespace = @import("namespace.zig");
 
@@ -68,6 +69,9 @@ fn create(name: []const u8, rootdir: []const u8, bundle: []const u8, spec: []con
 
     const pid = std.os.linux.getpid();
 
+    var pcomm = try channel.PChannel.init();
+    var ccomm = try channel.PChannel.init();
+
     std.log.debug("pid {} container name {s}", .{ pid, name });
     std.log.debug("pid {} root directory: {s}", .{ pid, rootdir });
     std.log.debug("pid {} bundle directory: {s}", .{ pid, bundle });
@@ -83,6 +87,8 @@ fn create(name: []const u8, rootdir: []const u8, bundle: []const u8, spec: []con
         .spec = spec,
         .noPivot = noPivot,
         .runtimeSpec = runspec,
+        .pcomm = &pcomm,
+        .ccomm = &ccomm,
     };
 
     try runtime.create(pid, &options);
