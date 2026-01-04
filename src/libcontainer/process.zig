@@ -95,51 +95,19 @@ pub fn processInit(opts: *runtime.RuntimeOptions) void {
     const pid = std.os.linux.getpid();
     std.log.debug("pid {} process init started", .{pid});
 
-    // set rest of namespace
-    // unshare newuser namespace
+    // set uid=0 and gid=0
+    containerSetUidAndGid(pid, 0, 0) catch |err| {
+        std.log.err("pid {} set uid and gid error: {any}", .{ pid, err });
+
+        unreachable;
+    };
 
     // mount rootfs
-
     mount.mountContainerRootFs(pid, opts.rootfs) catch |err| {
-        std.log.err("pid {} mount roofs: {any}", .{ pid, err });
+        std.log.err("pid {} mount rootfs: {any}", .{ pid, err });
 
         unreachable;
     };
-
-    // setup hostname and domain name
-    var hostname = DEFAULT_HOSTNAME;
-    if (opts.runtimeSpec.hostname) |cnthostname| {
-        hostname = cnthostname;
-    }
-
-    containerSetHostname(pid, hostname) catch |err| {
-        std.log.err("pid {} set hostname error: {any}", .{ pid, err });
-
-        unreachable;
-    };
-
-    if (opts.runtimeSpec.domainname) |cntdomainname| {
-        containerSetDomainname(pid, cntdomainname) catch |err| {
-            std.log.err("pid {} set domain name error: {any}", .{ pid, err });
-
-            unreachable;
-        };
-    }
-
-    // set working directory, uid and gid
-    if (opts.runtimeSpec.process) |cprocess| {
-        containerSetCwd(pid, cprocess.cwd) catch |err| {
-            std.log.err("pid {} set working directory error: {any}", .{ pid, err });
-
-            unreachable;
-        };
-
-        containerSetUidAndGid(pid, cprocess.user.uid, cprocess.user.gid) catch |err| {
-            std.log.err("pid {} set uid and gid error: {any}", .{ pid, err });
-
-            unreachable;
-        };
-    }
 
     // pivot root or chroot to rootfs
     if (opts.noPivot) {
@@ -177,6 +145,11 @@ pub fn processInit(opts: *runtime.RuntimeOptions) void {
         // unreachable;
     };
 
+    // set rest of env
+    applyRemainingSetup(pid, opts) catch |err| {
+        std.log.err("pid {}: {any}", .{ pid, err });
+    };
+
     opts.pcomm.send(channelAction.Ready, null) catch {
         unreachable;
     };
@@ -196,13 +169,51 @@ pub fn processInit(opts: *runtime.RuntimeOptions) void {
     }
 
     // execute CMD and set ENV paths
-    switch (linux.E.init(linux.execve("/bin/sh", &.{"whoami"}, &.{""}))) {
+    switch (linux.E.init(linux.execve("/bin/sh", &.{ "/bin/sh", "-c", "ls -l /proc", null }, &.{null}))) {
         .SUCCESS => {},
         else => |err| {
             std.log.debug("pid {} execve error: {any}", .{ pid, err });
 
             unreachable;
         },
+    }
+}
+
+fn applyRemainingSetup(pid: i32, opts: *runtime.RuntimeOptions) !void {
+    // setup hostname
+    var hostname = DEFAULT_HOSTNAME;
+    if (opts.runtimeSpec.hostname) |cnthostname| {
+        hostname = cnthostname;
+    }
+
+    containerSetHostname(pid, hostname) catch |err| {
+        std.log.err("pid {} set hostname error: {any}", .{ pid, err });
+
+        unreachable;
+    };
+
+    // set domain name
+    if (opts.runtimeSpec.domainname) |cntdomainname| {
+        containerSetDomainname(pid, cntdomainname) catch |err| {
+            std.log.err("pid {} set domain name error: {any}", .{ pid, err });
+
+            unreachable;
+        };
+    }
+
+    // set working directory, uid and gid
+    if (opts.runtimeSpec.process) |cprocess| {
+        containerSetCwd(pid, cprocess.cwd) catch |err| {
+            std.log.err("pid {} set working directory error: {any}", .{ pid, err });
+
+            unreachable;
+        };
+
+        containerSetUidAndGid(pid, cprocess.user.uid, cprocess.user.gid) catch |err| {
+            std.log.err("pid {} set uid and gid error: {any}", .{ pid, err });
+
+            unreachable;
+        };
     }
 }
 
