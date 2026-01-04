@@ -104,25 +104,10 @@ pub fn processInit(opts: *runtime.RuntimeOptions) void {
 
     // mount rootfs
     mount.mountContainerRootFs(pid, opts.rootfs) catch |err| {
-        std.log.err("pid {} mount roofs: {any}", .{ pid, err });
+        std.log.err("pid {} mount rootfs: {any}", .{ pid, err });
 
         unreachable;
     };
-
-    // pivot root or chroot to rootfs
-    if (opts.noPivot) {
-        filesystem.setChrootRootFs(pid, opts.rootfs) catch |err| {
-            std.log.err("pid {} chroot error: {any}", .{ pid, err });
-
-            unreachable;
-        };
-    } else {
-        filesystem.setPivotRootFs(pid, opts.rootfs) catch |err| {
-            std.log.err("pid {} pivot_root error: {any}", .{ pid, err });
-
-            unreachable;
-        };
-    }
 
     // mount filesystems
     mount.mountContainerMounts(pid, opts.runtimeSpec) catch |err| {
@@ -144,6 +129,21 @@ pub fn processInit(opts: *runtime.RuntimeOptions) void {
 
         // unreachable;
     };
+
+    // pivot root or chroot to rootfs
+    if (opts.noPivot) {
+        filesystem.setChrootRootFs(pid, opts.rootfs) catch |err| {
+            std.log.err("pid {} chroot error: {any}", .{ pid, err });
+
+            unreachable;
+        };
+    } else {
+        filesystem.setPivotRootFs(pid, opts.rootfs) catch |err| {
+            std.log.err("pid {} pivot_root error: {any}", .{ pid, err });
+
+            unreachable;
+        };
+    }
 
     // set rest of env
 
@@ -202,7 +202,7 @@ pub fn processInit(opts: *runtime.RuntimeOptions) void {
     }
 
     // execute CMD and set ENV paths
-    switch (linux.E.init(linux.execve("/bin/sh", &.{""}, &.{""}))) {
+    switch (linux.E.init(linux.execve("/bin/sh", &.{ "sh", null }, &.{null}))) {
         .SUCCESS => {},
         else => |err| {
             std.log.debug("pid {} execve error: {any}", .{ pid, err });

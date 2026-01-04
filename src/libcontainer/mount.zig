@@ -36,98 +36,45 @@ pub fn mountContainerMounts(pid: i32, spec: ocispec.runtime.Spec) !void {
     //    },
     // }
 
-    var cntInitMounts = std.ArrayList(mountInfo).init(gpa);
-    var cntPostInitMounts = std.ArrayList(mountInfo).init(gpa);
-
-    defer cntPostInitMounts.deinit();
-    defer cntInitMounts.deinit();
-
     if (spec.mounts) |mountPoints| {
         for (mountPoints) |mountPoint| {
             const minfo = try prepareMountPoint(pid, mountPoint);
 
-            if (std.mem.eql(u8, mountPoint.destination, "/proc")) {
-                try cntInitMounts.append(minfo);
+            std.log.debug("pid {} mounting {s}", .{ pid, minfo.destZ });
 
-                continue;
+            var mdataPtr: usize = 0;
+            if (minfo.options.data.len != 0) {
+                const mdata = try std.fmt.allocPrintZ(gpa, "{s}", .{minfo.options.data});
+                mdataPtr = @intFromPtr(&mdata);
             }
 
-            if (std.mem.eql(u8, mountPoint.destination, "/sys")) {
-                try cntInitMounts.append(minfo);
+            // const destPerm = getContainerMountPointMode(minfo.destZ);
 
-                continue;
+            // try utils.createDirAllWithMode(minfo.destZ, destPerm);
+
+            switch (linux.E.init(linux.mount(minfo.source, &minfo.dest, minfo.fstype, minfo.options.flags, mdataPtr))) {
+                .SUCCESS => {},
+                else => |err| {
+                    std.log.debug("pid {} container mount error: {any} {s}", .{ pid, err, minfo.dest });
+
+                    return errors.Error.ContainerMountError;
+                },
             }
-
-            if (std.mem.eql(u8, mountPoint.destination, "/dev")) {
-                try cntInitMounts.append(minfo);
-
-                continue;
-            }
-
-            try cntPostInitMounts.append(minfo);
-        }
-    }
-
-    // init mounts
-    for (cntInitMounts.items) |minfo| {
-        std.log.debug("{} mounting {s}", .{ pid, minfo.destZ });
-
-        var mdataPtr: usize = 0;
-        if (minfo.options.data.len != 0) {
-            const mdata = try std.fmt.allocPrintZ(gpa, "{s}", .{minfo.options.data});
-            mdataPtr = @intFromPtr(&mdata);
-        }
-
-        const destPerm = getContainerMountPointMode(minfo.destZ);
-
-        try utils.createDirAllWithMode(minfo.destZ, destPerm);
-
-        switch (linux.E.init(linux.mount(minfo.source, &minfo.dest, minfo.fstype, minfo.options.flags, mdataPtr))) {
-            .SUCCESS => {},
-            else => |err| {
-                std.log.debug("pid {} container mount error: {any} {s}", .{ pid, err, minfo.dest });
-
-                return errors.Error.ContainerMountError;
-            },
-        }
-    }
-
-    // post init mounts
-    for (cntPostInitMounts.items) |minfo| {
-        std.log.debug("pid {} mounting {s}", .{ pid, minfo.destZ });
-
-        var mdataPtr: usize = 0;
-        if (minfo.options.data.len != 0) {
-            const mdata = try std.fmt.allocPrintZ(gpa, "{s}", .{minfo.options.data});
-            mdataPtr = @intFromPtr(&mdata);
-        }
-
-        const destPerm = getContainerMountPointMode(minfo.destZ);
-
-        try utils.createDirAllWithMode(minfo.destZ, destPerm);
-
-        switch (linux.E.init(linux.mount(minfo.source, &minfo.dest, minfo.fstype, minfo.options.flags, mdataPtr))) {
-            .SUCCESS => {},
-            else => |err| {
-                std.log.debug("pid {} container mount error: {any} {s}", .{ pid, err, minfo.dest });
-
-                return errors.Error.ContainerMountError;
-            },
         }
     }
 }
 
 pub fn mountContainerRootFs(pid: i32, rootfs: []const u8) !void {
-    std.log.debug("pid {} mount bind rootfs: {s}", .{ pid, rootfs });
+    std.log.debug("pid {} mount rootfs: {s}", .{ pid, rootfs });
 
     const rootfs_dir = try posix.toPosixPath(rootfs);
     const rootfs_source = try std.fmt.allocPrintZ(std.heap.page_allocator, "{s}", .{rootfs});
 
-    const mount_result = linux.mount(rootfs_source, &rootfs_dir, null, linux.MS.BIND | linux.MS.PRIVATE | linux.MS.REC, 0);
+    const mount_result = linux.mount(rootfs_source, &rootfs_dir, null, linux.MS.BIND | linux.MS.REC | linux.MS.PRIVATE, 0);
     switch (linux.E.init(mount_result)) {
         .SUCCESS => return,
         else => |err| {
-            std.log.debug("pid {} mount rootfs error: {any}", .{ pid, err });
+            std.log.err("pid {} mount rootfs error: {any}", .{ pid, err });
 
             return errors.Error.ContainerRootfsMountError;
         },
