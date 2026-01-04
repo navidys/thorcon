@@ -109,6 +109,21 @@ pub fn processInit(opts: *runtime.RuntimeOptions) void {
         unreachable;
     };
 
+    // pivot root or chroot to rootfs
+    if (opts.noPivot) {
+        filesystem.setChrootRootFs(pid, opts.rootfs) catch |err| {
+            std.log.err("pid {} chroot error: {any}", .{ pid, err });
+
+            unreachable;
+        };
+    } else {
+        filesystem.setPivotRootFs(pid, opts.rootfs) catch |err| {
+            std.log.err("pid {} pivot_root error: {any}", .{ pid, err });
+
+            unreachable;
+        };
+    }
+
     // mount filesystems
     mount.mountContainerMounts(pid, opts.runtimeSpec) catch |err| {
         std.log.err("pid {}: {any}", .{ pid, err });
@@ -130,23 +145,41 @@ pub fn processInit(opts: *runtime.RuntimeOptions) void {
         // unreachable;
     };
 
-    // pivot root or chroot to rootfs
-    if (opts.noPivot) {
-        filesystem.setChrootRootFs(pid, opts.rootfs) catch |err| {
-            std.log.err("pid {} chroot error: {any}", .{ pid, err });
+    // set rest of env
+    applyRemainingSetup(pid, opts) catch |err| {
+        std.log.err("pid {}: {any}", .{ pid, err });
+    };
 
-            unreachable;
-        };
-    } else {
-        filesystem.setPivotRootFs(pid, opts.rootfs) catch |err| {
-            std.log.err("pid {} pivot_root error: {any}", .{ pid, err });
+    opts.pcomm.send(channelAction.Ready, null) catch {
+        unreachable;
+    };
 
-            unreachable;
-        };
+    std.log.debug("pid {} waiting for action {any}", .{ pid, channelAction.Start });
+    while (true) {
+        const recvData = opts.ccomm.receive() catch unreachable;
+        const actval = recvData.@"0";
+        switch (actval) {
+            channelAction.Start => {
+                std.log.debug("pid {} action {any} received", .{ pid, channelAction.Start });
+
+                break;
+            },
+            else => {},
+        }
     }
 
-    // set rest of env
+    // execute CMD and set ENV paths
+    switch (linux.E.init(linux.execve("/bin/sh", &.{ "/bin/sh", "-c", "ls -l /proc", null }, &.{null}))) {
+        .SUCCESS => {},
+        else => |err| {
+            std.log.debug("pid {} execve error: {any}", .{ pid, err });
 
+            unreachable;
+        },
+    }
+}
+
+fn applyRemainingSetup(pid: i32, opts: *runtime.RuntimeOptions) !void {
     // setup hostname
     var hostname = DEFAULT_HOSTNAME;
     if (opts.runtimeSpec.hostname) |cnthostname| {
@@ -181,34 +214,6 @@ pub fn processInit(opts: *runtime.RuntimeOptions) void {
 
             unreachable;
         };
-    }
-
-    opts.pcomm.send(channelAction.Ready, null) catch {
-        unreachable;
-    };
-
-    std.log.debug("pid {} waiting for action {any}", .{ pid, channelAction.Start });
-    while (true) {
-        const recvData = opts.ccomm.receive() catch unreachable;
-        const actval = recvData.@"0";
-        switch (actval) {
-            channelAction.Start => {
-                std.log.debug("pid {} action {any} received", .{ pid, channelAction.Start });
-
-                break;
-            },
-            else => {},
-        }
-    }
-
-    // execute CMD and set ENV paths
-    switch (linux.E.init(linux.execve("/bin/sh", &.{ "sh", null }, &.{null}))) {
-        .SUCCESS => {},
-        else => |err| {
-            std.log.debug("pid {} execve error: {any}", .{ pid, err });
-
-            unreachable;
-        },
     }
 }
 
